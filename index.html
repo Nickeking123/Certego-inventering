@@ -304,6 +304,8 @@ function mapColsClean(hdr){const h=hdr.map(norm);const ix=n=>{for(let i=0;i<h.le
     lgh:ix("lägenhet"),typ:ix("hyrestyp"),typ2:ix("typ"),rum:ix("lägenhetsstorlek"),fast:ix("fastighetsbeteckning"),
     ingN:-1,benN:-1,boa:-1,loa:-1,di:-1};}
 function cell(row,i){return i>=0&&i<row.length?String(row[i]==null?"":row[i]).trim():"";}
+function isUsedIdSheet(rows){let hits=0;for(let i=0;i<Math.min(rows.length,30);i++){if((rows[i]||[]).some(c=>/^DI\d+-\d+$/i.test(String(c==null?"":c).trim())))hits++;}return hits>=3;}
+function importUsedIds(rows){const bases=new Set();for(let r=0;r<rows.length;r++){const row=rows[r]||[];for(let c=0;c<row.length;c++){const m=String(row[c]==null?"":row[c]).trim().match(/^(DI\d+)-\d+$/i);if(m){bases.add(m[1].toUpperCase());break;}}}bases.forEach(b=>{didReserved[b]=true;});return bases.size;}
 function importPoolRows(rows){
   let hr=0;for(let i=0;i<Math.min(rows.length,8);i++){const c=rows[i].map(norm);if(c.some(x=>x.includes("dörr-id")||x.includes("dörr id")||x.includes("dörrid"))&&c.some(x=>x.includes("område"))){hr=i;break;}}
   const hh=rows[hr].map(norm);let di=-1,om=-1;
@@ -318,9 +320,10 @@ function isPoolSheet(rows){
   return flat.some(r=>r.some(x=>x.includes("dörr-id")||x.includes("dörr id")||x.includes("dörrid")))&&flat.some(r=>r.some(x=>x.includes("område")));
 }
 function importSheets(){
-  let added=0,refreshed=0,poolIds=0,used=0;const byKey={};objects.forEach(o=>byKey[o.key]=o);
+  let added=0,refreshed=0,poolIds=0,used=0,usedIds=0;const byKey={};objects.forEach(o=>byKey[o.key]=o);
   Object.keys(pickedSheets).forEach(sn=>{if(!pickedSheets[sn])return;used++;
     const rows=XLSX.utils.sheet_to_json(parsedWb.Sheets[sn],{header:1,raw:false,defval:""});
+    if(isUsedIdSheet(rows)){usedIds+=importUsedIds(rows);return;}
     if(isPoolSheet(rows)){poolIds+=importPoolRows(rows);return;}
     const hr=findHeaderRow(rows);const m=rows[hr].map(norm).includes("hyresobjektid")?mapColsClean(rows[hr]):mapCols(rows[hr]);
     for(let r=hr+1;r<rows.length;r++){const row=rows[r];if(!row||!row.length)continue;
@@ -338,7 +341,7 @@ function importSheets(){
   objects.forEach(o=>{if(o.di)didReserved[o.di]=true;});
   savePool();saveReserved();persist();
   const poolN=Object.keys(didPool).length;
-  $("impResult").innerHTML='<b style="color:var(--ok)">Klart.</b> '+added+' nya objekt'+(refreshed?' ('+refreshed+' uppdaterade)':'')+'. '+(poolIds?poolIds+' Dörr-id inlästa till listan ('+poolN+' områden). ':'')+'Totalt: '+objects.length+' objekt.';
+  $("impResult").innerHTML='<b style="color:var(--ok)">Klart.</b> '+added+' nya objekt'+(refreshed?' ('+refreshed+' uppdaterade)':'')+'. '+(poolIds?poolIds+' Dörr-id inlästa till listan ('+poolN+' områden). ':'')+(usedIds?usedIds+' använda Dörr-id spärrade. ':'')+'Totalt: '+objects.length+' objekt.';
   parsedWb=null;pickedSheets={};$("sheetPick").innerHTML="";$("impAction").style.display="none";refreshAll();
 }
 function handleFile(f){
@@ -347,8 +350,9 @@ function handleFile(f){
     $("sheetPick").innerHTML=parsedWb.SheetNames.map(n=>{
       const rows=XLSX.utils.sheet_to_json(parsedWb.Sheets[n],{header:1,raw:false,defval:""});
       const looks=rows.slice(0,8).some(r=>r.map(norm).some(x=>x.includes("hyresid")||x.includes("lägenhetsnummer")));
-      if(looks)pickedSheets[n]=true;
-      return '<div class="spitem '+(looks?'on':'')+'" data-n="'+encodeURIComponent(n)+'"><span class="cb">'+(looks?'✓':'')+'</span><span class="nm">'+n+'</span><span class="ct">'+rows.length+' rader'+(looks?' · objektlista':'')+'</span></div>';
+      const usedish=rows.slice(0,30).some(r=>(r||[]).some(c=>/^DI\d+-\d+$/i.test(String(c==null?"":c).trim())));
+      if(looks||usedish)pickedSheets[n]=true;
+      return '<div class="spitem '+(looks?'on':'')+'" data-n="'+encodeURIComponent(n)+'"><span class="cb">'+(looks?'✓':'')+'</span><span class="nm">'+n+'</span><span class="ct">'+rows.length+' rader'+(usedish?' · använda Dörr-id':(looks?' · objektlista':''))+'</span></div>';
     }).join("");
     $("sheetPick").querySelectorAll(".spitem").forEach(el=>el.onclick=()=>{const n=decodeURIComponent(el.dataset.n);pickedSheets[n]=!pickedSheets[n];el.classList.toggle("on",pickedSheets[n]);el.querySelector(".cb").textContent=pickedSheets[n]?"✓":"";});
     $("impAction").style.display="block";
