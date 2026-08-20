@@ -183,6 +183,17 @@
       <button class="btn primary" id="syncBtn" style="margin-top:12px">Synka mot server</button>
       <div class="hint" id="syncStatus" style="margin-top:10px"></div>
     </div></div>
+    <h2 class="sec">Foton per område</h2>
+    <div class="card"><div class="body">
+      <label>Område</label>
+      <select id="fotoOmr"><option value="">— välj område —</option></select>
+      <div class="hint" id="fotoInfo" style="margin-top:8px">Foton på servern per område visas här.</div>
+      <div style="display:flex;gap:8px;margin-top:12px">
+        <button class="btn primary" id="fotoExp" style="flex:1">Exportera foton</button>
+        <button class="btn ghost" id="fotoDel" style="flex:1">Rensa på servern</button>
+      </div>
+      <div class="hint" style="margin-top:8px">Exporterar en zip med bilderna döpta efter Dörr-id. Rensa tar bort områdets foton från servern efter att du sparat dem hos er.</div>
+    </div></div>
     <div class="tools">
       <button id="expCsv">Exportera programmeringslista</button>
       <button id="expObj">Exportera objektlista</button>
@@ -208,9 +219,9 @@
 <div class="toast" id="toast"></div>
 
 <script>
-const OMRADE = {"0101":"Tuna Backar","0102":"Idun Hagbard","0103":"Frodeparken","0104":"Blenda","0105":"Toven","0106":"Einar Sverre","0107":"Gudrun","0108":"Tegnerparken","0109":"Fyrisvallen","0110":"Mjölnaren","0112":"Åpromenaden","0114":"Björklinge Södra Långåsvägen","0115":"Prästgårdshöjden","0117":"Brandstationen","0170":"Lyckebo","0171":"Storvreta","0186":"Bälinge Allmänningsvägen","0188":"Strandängen Samfälligh","0193":"Idun","0195":"Nya Tuna Backar","0221":"S Kvarngärdet","0230":"Koret","0292":"Folkvang","0326":"Kastanjen","0327":"Salabackar","0328":"Sala Hage","0329":"Arkitekten","0330":"Gröna Gatan 1","0331":"Gröna Gatan 2","0332":"Gröna Gatan 3","0333":"Blåklinten","0334":"Brillinge","0335":"Slavsta","0377":"Källsprånget","0380":"Klarbäret, Slavsta","0393":"Tåhättan","0408":"Rickomberga","0409":"Kullerstenen","0410":"Stenbacken","0411":"Opalen","0412":"Citrinen-Bärnstenen","0416":"Nya Täljstenen","0425":"Cementgjuteriet","0426":"Betongplattan","0427":"Gjutformen","0428":"Cementsilon","0432":"Kåbo 2","0435":"Kåbo 1","0436":"Lassebygärde","0437":"Haubitsen","0438":"Täljstenen","0440":"Moränen","0441":"Marmorn-Kalkstenen","0442":"Bärum","0443":"Fredriksberg","0444":"Nordkalotten","0472":"Ekebyvallen","0473":"Tavastehusgatan","0475":"Norden/Tartu","0478":"Nya Haubitsen","0479":"Vangsby Vänge","0484":"Håga By","0546":"Vårdsätra Backe","0547":"Malmavägen","0548":"Rosendal","0549":"Rangström","0550":"August Söderman Jämna","0551":"August Söderman Udda","0552":"Stenhammar Blomdahl","0553":"Peterson Berger Udda","0554":"Peterson Berger Jämna","0556":"Jenny Lind","0557":"Oscar Arpi","0558":"Solisten Gård 1.2.3","0559":"Dirigenten Gård 6.7.8","0560":"Flöjten Gård 9.10","0569":"Trasthagen","0580":"Nya Aug Söderman","0591":"Flöjtvägen","0592":"Valthornsvägen","0593":"Björngården","0640":"Östra Bäcklösa","0652":"Ulleråker","0660":"Nåntuna-Hage","0661":"Gotlandsresan","0662":"Renblomman","0663":"Blå Jungfrun","0664":"Gunsta Ekervägen","0666":"Almunge Lövsta","0672":"Länna Malm-Jerker","0674":"Gunsta Villav/Skråttvägen","0681":"Krogen","0682":"Lännaholm P-hem","0885":"Östra Orgeln","0886":"Holmfrid","0888":"Kapplasse","0889":"Örtegården","0891":"Gimle","0896":"Ringgatan","0897":"Klockarbo","0898":"Klockarlunden","0986":"Modullägenheter Marmorvägen","7001":"Gamla Studentstaden","7002":"Rackarberget","7005":"Blodstenen","7006":"Djäknegatan Höghus","7007":"Väktargatan","7009":"Djäknegatan Låghus","7011":"Flogstavägen","7421":"Observatoriet","7433":"Dag Hammarskjölds väg","7434":"Blåsenhus","7471":"Ekeby","7540":"Dansmästaren"};
+const OMRADE={"0101":"Tuna Backar","0102":"Idun","0103":"Frodeparken","0104":"Blenda","0105":"Toven","0106":"Sverre","0107":"Gudrun","0108":"Fåfne","0109":"Fyrisvallen","0110":"Mjölnaren","0112":"Varpen","0114":"Södra Långåsvägen","0115":"Prästgårdshöjden","0117":"Ambulansen","0170":"Himmelsvägen","0171":"Ärentunavägen och Kilsgärdesvägen","0186":"Allmänningsvägen","0188":"Strandängen samfällighet","0193":"Idun Svartbäcksgatan 50 M-N","0195":"Torbjörn","0221":"Kvarngärdet","0230":"Koret","0292":"Folkvang","0326":"Kastanjen","0327":"Skomakarberget","0328":"Pliggen","0329":"Arkitekten","0330":"Källan 1","0331":"Källan 2","0332":"Johannesbäcksgatan","0333":"Blåklinten","0334":"Städet","0335":"Spritärtan","0377":"Källsprånget","0380":"Klarbäret","0393":"Tåhättan","0408":"Myrberg","0409":"Kullerstenen","0410":"Stenbacken","0411":"Opalen","0412":"Citrinen","0416":"Täljstensvägen 1 A","0425":"Cementgjuteriet","0426":"Betongplattan","0427":"Gjutformen","0428":"Cementsilon","0432":"Döbelnsgatan 2C-L","0435":"Döbelnsgatan 2A-B","0436":"Birka","0437":"Döbelnsgatan 6-20","0438":"Täljstenen","0440":"Moränen","0441":"Marmorn och Kalkstenen","0442":"Bärum","0443":"Fredriksberg","0444":"Nordkalotten","0472":"Ekebyvallen","0473":"Roskilde","0475":"Norden och Tartu","0478":"Döbelnsgatan 20D","0479":"Vangsby","0484":"Håga","0546":"Vårdsätra Backe","0547":"Mullögat","0548":"Prorektorn och Fäktmästaren","0549":"Rangström","0550":"August Söderman Jämna","0551":"August Söderman Udda","0552":"Stenhammar Blomdahl","0553":"Peterson Berger Udda","0554":"Peterson Berger Jämna","0556":"Jenny Lind","0557":"Oscar Arpi","0558":"Solisten","0559":"Dirigenten","0560":"Flöjten","0569":"Trasthagen","0580":"Nya August Söderman","0591":"Flöjtvägen 1","0592":"Valthornet","0593":"Björngården","0640":"Ekoxen & Humlebaggen","0652":"Ulleråker","0660":"Nåntuna Hage","0661":"Rauken och Hoburgen","0662":"Renblomman","0663":"Blå Jungfrun","0664":"Ekervägen","0666":"Taborvägen","0672":"Malm Jerkers väg","0674":"Gunsta villaväg och Skråttsvägen","0681":"Kalle Blanks väg 1","0682":"Kalle Blanks väg 3-7","0885":"Östra Orgeln","0886":"Holmfrid","0888":"Bjarne","0889":"Örtedalen","0891":"Gimle","0896":"Birgit","0897":"Klockaren udda","0898":"Klockaren jämna","0986":"Modullägenheter Marmorvägen","7001":"Studentstaden","7002":"Rackarberget","7005":"Blodstenen","7006":"Vapenhuset","7007":"Väktaren","7009":"Kyrkstöten","7011":"Hamberg","7421":"Observatoriet","7433":"Dag Hammarskjölds väg 29 A-B","7434":"Blåsenhus","7471":"Ekeby student","7540":"Dansmästaren"};
 
-const CTYPES=[{t:"Oval",pref:1},{t:"Postfack",pref:2},{t:"Hänglås",pref:3},{t:"Hänglås Anchor",pref:3},{t:"Oval in- och utsida",pref:1},{t:"Kortläsare/Porttelefon",pref:5}];
+const CTYPES=[{t:"Oval",pref:1},{t:"Postfack",pref:2},{t:"Hänglås",pref:3},{t:"Kortläsare",pref:4},{t:"Porttelefon",pref:5},{t:"Bokningstavla",pref:6},{t:"Dummy oval",pref:7},{t:"Dummy skåp",pref:8}];
 const PREF=Object.fromEntries(CTYPES.map(c=>[c.t,c.pref]));
 const UTRYMMEN=["Lägenhetsdörr","Entré","Källargång","Cykelrum","Barnvagnsrum","Tvättstuga","Miljöhus/Soprum","Förråd","Källarförråd","Vindsförråd","Teknikrum","Elnisch","Undercentral","Garage","Postfacksrum","Gemensamhetslokal","Skyddsrum","Annat (fritext)"];
 const TOGS=[["trycke","Trycke"],["tackbricka","Täckbricka"],["laskista","Låskista"],["ellas","El-lås"],["dorrstangare","Dörrstängare"]];
@@ -284,11 +295,15 @@ function mapCols(hdr){
     rum:find(["rum.benämning","rum benämning","rum, benämning"]),
     hyres:find(["hyresid","rumsid"]),di:find(["dörr-id","dörr id"])};
 }
+function mapColsClean(hdr){const h=hdr.map(norm);const ix=n=>{for(let i=0;i<h.length;i++)if(h[i]===n)return i;return -1;};
+  return {hyres:ix("hyresobjektid"),omr:ix("områdekod"),byg:ix("byggnad"),bygN:ix("byggnadsnamn"),ing:ix("ingång"),
+    lgh:ix("lägenhet"),typ:ix("hyrestyp"),typ2:ix("typ"),rum:ix("lägenhetsstorlek"),fast:ix("fastighetsbeteckning"),
+    ingN:-1,benN:-1,boa:-1,loa:-1,di:-1};}
 function cell(row,i){return i>=0&&i<row.length?String(row[i]==null?"":row[i]).trim():"";}
 function importPoolRows(rows){
-  let hr=0;for(let i=0;i<Math.min(rows.length,8);i++){const c=rows[i].map(norm);if(c.some(x=>x.includes("dörr-id")||x.includes("dörr id"))&&c.some(x=>x.includes("område"))){hr=i;break;}}
+  let hr=0;for(let i=0;i<Math.min(rows.length,8);i++){const c=rows[i].map(norm);if(c.some(x=>x.includes("dörr-id")||x.includes("dörr id")||x.includes("dörrid"))&&c.some(x=>x.includes("område"))){hr=i;break;}}
   const hh=rows[hr].map(norm);let di=-1,om=-1;
-  for(let i=0;i<hh.length;i++){if(di<0&&(hh[i].includes("dörr-id")||hh[i].includes("dörr id")))di=i;if(om<0&&hh[i].includes("område"))om=i;}
+  for(let i=0;i<hh.length;i++){if(di<0&&(hh[i].includes("dörr-id")||hh[i].includes("dörr id")||hh[i].includes("dörrid")))di=i;if(om<0&&hh[i].includes("område"))om=i;}
   let n=0;for(let r=hr+1;r<rows.length;r++){const id=cell(rows[r],di);if(!/^DI\d/i.test(id))continue;const omr=cell(rows[r],om).padStart(4,"0");(didPool[omr]=didPool[omr]||[]).push(id);n++;}
   return n;
 }
@@ -296,14 +311,14 @@ function isPoolSheet(rows){
   const flat=rows.slice(0,8).map(r=>r.map(norm));
   const obj=flat.some(r=>r.some(x=>x.includes("hyresid")||x.includes("lägenhetsnummer")));
   if(obj)return false;
-  return flat.some(r=>r.some(x=>x.includes("dörr-id")||x.includes("dörr id")))&&flat.some(r=>r.some(x=>x.includes("område")));
+  return flat.some(r=>r.some(x=>x.includes("dörr-id")||x.includes("dörr id")||x.includes("dörrid")))&&flat.some(r=>r.some(x=>x.includes("område")));
 }
 function importSheets(){
   let added=0,refreshed=0,poolIds=0,used=0;const byKey={};objects.forEach(o=>byKey[o.key]=o);
   Object.keys(pickedSheets).forEach(sn=>{if(!pickedSheets[sn])return;used++;
     const rows=XLSX.utils.sheet_to_json(parsedWb.Sheets[sn],{header:1,raw:false,defval:""});
     if(isPoolSheet(rows)){poolIds+=importPoolRows(rows);return;}
-    const hr=findHeaderRow(rows),m=mapCols(rows[hr]);
+    const hr=findHeaderRow(rows);const m=rows[hr].map(norm).includes("hyresobjektid")?mapColsClean(rows[hr]):mapCols(rows[hr]);
     for(let r=hr+1;r<rows.length;r++){const row=rows[r];if(!row||!row.length)continue;
       const hyres=cell(row,m.hyres),lgh=cell(row,m.lgh),omr=cell(row,m.omr).padStart(4,"0");
       let di=cell(row,m.di);if(!/^DI\d/i.test(di))di="";
@@ -353,7 +368,7 @@ function nextBaseDi(omr){
   const rx=new RegExp('^DI'+omr+'(\\d+)$');Object.keys(didReserved).forEach(id=>{const m=rx.exec(id);if(m)max=Math.max(max,+m[1]);});
   return "DI"+omr+(max+1);
 }
-function nextSuffix(comps,typ){const used=comps.map(c=>c.suffix);const pref=PREF[typ]||6;if(!used.includes(pref))return pref;return (used.length?Math.max.apply(null,used):0)+1;}
+function nextSuffix(comps,typ){const base=PREF[typ]||6;const n=comps.filter(c=>c.typ===typ).length;return n===0?base:base*10+n;}
 
 function omrOptions(){const used=[...new Set(objects.map(o=>o.omr))].sort();
   $("fOmr").innerHTML='<option value="">Alla områden</option>'+used.map(o=>'<option value="'+o+'">'+o+' · '+(OMRADE[o]||"")+'</option>').join("");$("fOmr").value=filter.omr;}
@@ -369,6 +384,8 @@ function renderBrowse(){
   const mb=$("missingBanner");
   if(mb){mb.innerHTML=missing?('<div style="background:#fde8c8;border:1px solid #f3c4a8;border-radius:10px;padding:11px 13px;margin-top:12px;display:flex;align-items:center;gap:10px;font-size:13.5px"><span><b>'+missing+'</b> objekt saknar bas-Dörr-id'+(filter.omr?'':' (alla områden)')+'</span><button class="btn ghost" id="bulkBtn" style="margin-left:auto;flex:0 0 auto;padding:9px 13px;font-size:13px">Tilldela alla</button></div>'):'';if(missing){const bb=$("bulkBtn");if(bb)bb.onclick=bulkAssign;}}
   const has=objects.length>0;$("invEmpty").style.display=has?"none":"block";$("invMain").style.display=has?"block":"none";if(!has)return;
+  const areasN=new Set(objects.map(o=>o.omr)).size;
+  if(!filter.omr&&areasN>1){$("browse").innerHTML='<div class="empty" style="padding:26px 14px;line-height:1.6">Välj ett <b>område</b> i rullgardinen ovan för att visa dess objekt.<br><small style="color:var(--muted)">'+objects.length+' objekt i '+areasN+' områden importerade.</small></div>';return;}
   let list=objects.filter(o=>(!filter.omr||o.omr===filter.omr)&&(!filter.stat||(filter.stat==="klar"?isDone(o):!isDone(o))));
   const groups={};list.forEach(o=>{const gk=o.omr+"|"+(o.byg||"")+"|"+(o.ing||"");(groups[gk]=groups[gk]||{key:gk,omr:o.omr,byg:o.byg,ing:o.ing,bygN:o.bygN,items:[]}).items.push(o);});
   const arr=Object.values(groups).sort((a,b)=>(a.omr+a.byg+a.ing).localeCompare(b.omr+b.byg+b.ing,'sv'));
@@ -428,7 +445,7 @@ function assignBase(o){o.di=nextBaseDi(o.omr);o.diAssigned=true;reserve(o.di);pe
 function renderComps(){
   const base=recObj?recObj.di:"";
   const host=$("compList");if(!host)return;
-  if(!draft.comps.length){host.innerHTML='<div class="hint" style="margin-top:10px">Inga enheter än. Tryck på en typ ovan — Dörr-id sätts automatiskt (Oval -1, Postfack -2, Hänglås -3, Kortläsare/Porttelefon -5).</div>';return;}
+  if(!draft.comps.length){host.innerHTML='<div class="hint" style="margin-top:10px">Inga enheter än. Tryck på en typ ovan — Dörr-id sätts automatiskt (Oval -1, andra ovalen -11, tredje -12 … Postfack -2, Hänglås -3, Kortläsare -4, Porttelefon -5, Bokningstavla -6).</div>';return;}
   host.innerHTML=draft.comps.map((c,i)=>'<div class="comp" data-i="'+i+'"><div class="top"><span class="cid">'+(base?base+'-'+c.suffix:'(bas saknas)-'+c.suffix)+'</span><span class="cty">'+c.typ+'</span><button class="rm" data-i="'+i+'">×</button></div><div class="det"><select class="cPlac" data-i="'+i+'"><option value="">Utrymme …</option>'+UTRYMMEN.map(u=>'<option '+(c.placering===u?'selected':'')+'>'+u+'</option>').join("")+'</select><input class="cB mono" data-i="'+i+'" type="number" inputmode="numeric" placeholder="B-mått" value="'+(c.bmatt||'')+'"><input class="cFri fri" data-i="'+i+'" placeholder="Placering – fritext" value="'+esc(c.placeringFri||'')+'" style="'+(c.placering==='Annat (fritext)'||c.placeringFri?'':'display:none')+'"></div></div>').join("");
   host.querySelectorAll(".rm").forEach(b=>b.onclick=()=>{draft.comps.splice(+b.dataset.i,1);renderComps();});
   host.querySelectorAll(".cPlac").forEach(s=>s.onchange=()=>{const i=+s.dataset.i;draft.comps[i].placering=s.value;const fri=host.querySelector('.cFri[data-i="'+i+'"]');if(s.value==='Annat (fritext)'){fri.style.display='';fri.focus();}else if(!draft.comps[i].placeringFri){fri.style.display='none';}});
@@ -632,9 +649,26 @@ async function syncNow(){
       for(const id of refIds){if(localKeys.has(id)&&!srvIds.has(id)){const d=await photoGet(id);if(d){await fetch(base+"/api/photo",{method:"POST",headers:{"Content-Type":"application/json"},body:JSON.stringify({id,data:d})}).catch(()=>{});}}}
       for(const id of refIds){if(!localKeys.has(id)&&srvIds.has(id)){const bl=await fetch(base+"/api/photo/"+id).then(r=>r.ok?r.blob():null).catch(()=>null);if(bl){const du=await blobToDataURL(bl);if(du)await photoPut(id,du);}}}
     }catch(e){}
-    toast("Synkad mot server ✓");
+    toast("Synkad mot server ✓");loadFotoAreas();
     $("syncStatus").textContent="Senaste synk: "+fmt(lastSync);
   }catch(e){toast("Ingen kontakt med servern");$("syncStatus").textContent="Synk misslyckades. Senaste lyckade: "+fmt(lastSync);}
+}
+async function loadFotoAreas(){
+  const base=(serverUrl||"").replace(/\/+$/,"");
+  try{
+    const r=await fetch(base+"/api/photos/areas").then(r=>r.json());
+    const areas=r.areas||{};const keys=Object.keys(areas).sort();
+    if($("fotoOmr")){$("fotoOmr").innerHTML='<option value="">— välj område —</option>'+keys.map(o=>'<option value="'+o+'">'+o+' · '+(OMRADE[o]||"")+' ('+areas[o]+' foton)</option>').join("");}
+    if($("fotoInfo"))$("fotoInfo").textContent=keys.length?(keys.length+" områden har foton på servern."):"Inga foton på servern än.";
+  }catch(e){if($("fotoInfo"))$("fotoInfo").textContent="Kunde inte nå servern (spara serveradress och synka först).";}
+}
+function fotoExport(){const omr=$("fotoOmr").value;if(!omr){toast("Välj område");return;}
+  const base=(serverUrl||"").replace(/\/+$/,"");window.location=base+"/api/photos/export?omr="+omr;}
+async function fotoClear(){const omr=$("fotoOmr").value;if(!omr){toast("Välj område");return;}
+  if(!confirm("Rensa alla foton för område "+omr+" från servern?\n\nGör detta FÖRST efter att du exporterat och sparat dem hos er."))return;
+  const base=(serverUrl||"").replace(/\/+$/,"");
+  try{const r=await fetch(base+"/api/photos/clear",{method:"POST",headers:{"Content-Type":"application/json"},body:JSON.stringify({omr})}).then(r=>r.json());
+    toast("Rensade "+(r.cleared||0)+" foton");loadFotoAreas();}catch(e){toast("Kunde inte rensa");}
 }
 function refreshAll(){omrOptions();renderBrowse();renderOverview();renderEquip();
   const pn=Object.keys(didPool).length,pc=Object.values(didPool).reduce((s,a)=>s+a.length,0);
@@ -645,6 +679,7 @@ function init(){
   document.querySelectorAll("nav button").forEach(b=>b.onclick=()=>{document.querySelectorAll("nav button").forEach(x=>x.classList.toggle("on",x===b));document.querySelectorAll(".view").forEach(v=>v.classList.toggle("on",v.id===b.dataset.v));window.scrollTo({top:0});});
   $("fOmr").onchange=e=>{filter.omr=e.target.value;renderBrowse();};
   $("fStat").onchange=e=>{filter.stat=e.target.value;renderBrowse();};
+  if($("fotoExp")){$("fotoExp").onclick=fotoExport;$("fotoDel").onclick=fotoClear;loadFotoAreas();}
   const drop=$("drop"),file=$("file");drop.onclick=()=>file.click();file.onchange=e=>{if(e.target.files[0])handleFile(e.target.files[0]);};
   ["dragover","dragenter"].forEach(ev=>drop.addEventListener(ev,e=>{e.preventDefault();drop.classList.add("hot");}));
   ["dragleave","drop"].forEach(ev=>drop.addEventListener(ev,e=>{e.preventDefault();drop.classList.remove("hot");}));

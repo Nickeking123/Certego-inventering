@@ -30,6 +30,8 @@ import sqlite3
 import threading
 import base64
 import re
+import io
+import zipfile
 from flask import Flask, request, jsonify, send_from_directory, Response
 
 ROOT = os.path.dirname(os.path.abspath(__file__))
@@ -171,6 +173,82 @@ def api_photo_get(pid):
     if not os.path.exists(os.path.join(PHOTODIR, pid + ".jpg")):
         return Response(status=404)
     return cors(send_from_directory(PHOTODIR, pid + ".jpg"))
+
+
+def photo_map():
+    """photoid -> (omr, di, index) från lagrad bundle."""
+    b = load_bundle()
+    mp = {}
+    for o in b.get("objects", []):
+        omr = (o.get("omr") or "").strip()
+        di = (o.get("di") or o.get("key") or "").strip()
+        photos = o.get("photos") or []
+        for i, pid in enumerate(photos):
+            mp[safe_id(pid)] = (omr, di, i + 1)
+    return mp
+
+
+@app.route("/api/photos/areas")
+def api_photos_areas():
+    mp = photo_map()
+    counts = {}
+    if os.path.isdir(PHOTODIR):
+        have = {f[:-4] for f in os.listdir(PHOTODIR) if f.endswith(".jpg")}
+        for pid, (omr, di, idx) in mp.items():
+            if pid in have and omr:
+                counts[omr] = counts.get(omr, 0) + 1
+    return cors(jsonify({"areas": counts}))
+
+
+@app.route("/api/photos/export")
+def api_photos_export():
+    omr = (request.args.get("omr") or "").strip()
+    mp = photo_map()
+    buf = io.BytesIO()
+    n = 0
+    with zipfile.ZipFile(buf, "w", zipfile.ZIP_DEFLATED) as z:
+        if os.path.isdir(PHOTODIR):
+            for f in os.listdir(PHOTODIR):
+                if not f.endswith(".jpg"):
+                    continue
+                pid = f[:-4]
+                info = mp.get(pid)
+                if not info:
+                    continue
+                fomr, di, idx = info
+                if omr and fomr != omr:
+                    continue
+                # namnge efter Dörr-id (DIxxxx-1.jpg), unikt suffix om flera
+                base = di if di else pid
+                name = "%s-%d.jpg" % (base, idx)
+                z.write(os.path.join(PHOTODIR, f), name)
+                n += 1
+    buf.seek(0)
+    fn = "foton_%s.zip" % (omr or "alla")
+    resp = Response(buf.read(), mimetype="application/zip")
+    resp.headers["Content-Disposition"] = "attachment; filename=%s" % fn
+    resp.headers["X-Photo-Count"] = str(n)
+    return cors(resp)
+
+
+@app.route("/api/photos/clear", methods=["POST", "OPTIONS"])
+def api_photos_clear():
+    if request.method == "OPTIONS":
+        return cors(Response())
+    d = request.get_json(force=True, silent=True) or {}
+    omr = (d.get("omr") or "").strip()
+    if not omr:
+        return cors(Response(status=400))
+    mp = photo_map()
+    n = 0
+    if os.path.isdir(PHOTODIR):
+        for pid, (fomr, di, idx) in mp.items():
+            if fomr == omr:
+                p = os.path.join(PHOTODIR, pid + ".jpg")
+                if os.path.exists(p):
+                    os.remove(p)
+                    n += 1
+    return cors(jsonify({"cleared": n, "omr": omr}))
 
 
 @app.route("/")
