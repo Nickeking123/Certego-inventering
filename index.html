@@ -114,6 +114,12 @@
   .fab{position:fixed;right:16px;bottom:70px;z-index:45;background:var(--accent);color:#fff;border:none;border-radius:16px;padding:14px 18px;font-family:var(--disp);font-weight:700;font-size:15px;box-shadow:0 6px 18px rgba(242,92,5,.4);cursor:pointer}
   .fab:active{background:var(--accent-deep)}
   .badge{font-size:10px;font-weight:700;letter-spacing:.04em;text-transform:uppercase;background:var(--accent-soft);color:var(--accent-deep);border-radius:5px;padding:2px 6px;margin-left:2px}
+details.cov-details{margin:0 0 4px}
+details.cov-details>summary{cursor:pointer;list-style:none;display:flex;align-items:center;gap:8px;margin:18px 0 10px}
+details.cov-details>summary::-webkit-details-marker{display:none}
+details.cov-details>summary::after{content:"\25B8";margin-left:auto;color:var(--muted);font-size:13px;transition:transform .15s}
+details.cov-details[open]>summary::after{transform:rotate(90deg)}
+.cov-sumnum{font-size:13px;font-weight:500;color:var(--muted)}
 </style>
 
 <header><div class="hd">
@@ -174,8 +180,10 @@
       <div class="kpi ok"><b id="kDone">0</b><span>Klara</span></div>
       <div class="kpi acc"><b id="kComp">0</b><span>Dörr-id satta</span></div>
     </div>
-    <h2 class="sec">Täckning per område</h2>
-    <div class="card"><div class="body" id="coverage"></div></div>
+    <details class="cov-details">
+      <summary class="sec cov-sum">Täckning per område <span id="covSum" class="cov-sumnum"></span></summary>
+      <div class="card"><div class="body" id="coverage"></div></div>
+    </details>
     <h2 class="sec">Server &amp; synk</h2>
     <div class="card"><div class="body">
       <label>Serveradress (lämna tom om appen körs från servern)</label>
@@ -525,6 +533,7 @@ function renderOverview(){
   const rows=Object.entries(byO).sort();
   $("coverage").innerHTML=rows.length?rows.map(e=>{const o=e[0],v=e[1],p=Math.round(v.done/v.tot*100);
     return '<div class="covrow"><div class="nm">'+o+'<small>'+(OMRADE[o]||"")+'</small></div><div class="bar"><i style="width:'+p+'%"></i></div><div class="pct">'+v.done+'/'+v.tot+'</div></div>';}).join(""):'<div class="hint">Importera en objektlista.</div>';
+  const cs=$("covSum");if(cs)cs.textContent=rows.length?("· "+rows.length+" områden"):"";
 }
 
 function dl(name,text,type){const b=new Blob([text],{type:type||"text/csv;charset=utf-8"});const u=URL.createObjectURL(b);const a=document.createElement("a");a.href=u;a.download=name;a.click();URL.revokeObjectURL(u);}
