@@ -233,15 +233,19 @@ let didPool={};let didReserved={};
 let serverUrl="";let lastSync="";let equip=[];
 const $=id=>document.getElementById(id);
 
+const KVDB="certego_kv";
+function kvdb(){return new Promise((res,rej)=>{try{const r=indexedDB.open(KVDB,1);r.onupgradeneeded=()=>{r.result.createObjectStore("kv");};r.onsuccess=()=>res(r.result);r.onerror=()=>rej(r.error);}catch(e){rej(e);}});}
 const store={
   async get(k){
+    try{const db=await kvdb();const v=await new Promise((res,rej)=>{const tx=db.transaction("kv","readonly");const rq=tx.objectStore("kv").get(k);rq.onsuccess=()=>res(rq.result);rq.onerror=()=>rej(rq.error);});if(v!=null)return v;}catch(e){}
     try{if(window.localStorage){const v=localStorage.getItem(k);if(v!=null)return v;}}catch(e){}
-    try{if(window.storage){const r=await window.storage.get(k);return r&&r.value;}}catch(e){}
     return null;
   },
   async set(k,val){
+    try{const db=await kvdb();await new Promise((res,rej)=>{const tx=db.transaction("kv","readwrite");tx.objectStore("kv").put(val,k);tx.oncomplete=()=>res();tx.onerror=()=>rej(tx.error);});
+      try{if(window.localStorage&&val.length<200000)localStorage.setItem(k,val);}catch(e){}
+      return true;}catch(e){}
     try{if(window.localStorage){localStorage.setItem(k,val);return true;}}catch(e){}
-    try{if(window.storage){await window.storage.set(k,val);return true;}}catch(e){}
     return false;
   }
 };
