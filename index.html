@@ -201,7 +201,7 @@
       <button id="expArt">Exportera artikellista</button>
       <button id="expJson">Dela / spara backup</button>
       <button id="mergeBtn">Slå ihop backup</button>
-      <button id="clr" class="danger">Rensa allt</button>
+      <button id="clr" class="danger">Rensa lokalt</button>
     </div>
     <div class="hint" style="margin:12px 4px;line-height:1.6">Programmeringslistan har <b>en rad per Dörr-id</b> (varje enhet att programmera). Objekt utan enheter kommer med markerade "ej tilldelad" så inget tappas bort. Avgränsare <b>;</b> (svensk Excel).</div>
   </section>
@@ -229,7 +229,7 @@ const TOGS=[["trycke","Trycke"],["tackbricka","Täckbricka"],["laskista","Låski
 const TKEYS=TOGS.map(t=>t[0]);
 const EQUIP=["Centralapparat","Styra 3000","Styra komkort 4000","Dörrbox","Likriktare","Nätaggregat","Kortläsare","Porttelefon","Manöverpanel","Slingantenn","Motorlås"];
 
-let objects=[];let filter={omr:"",stat:""};let openGroups={};let parsedWb=null,pickedSheets={};
+let objects=[];let filter={omr:"",stat:""};let openGroups={};let activeGroup=null;let parsedWb=null,pickedSheets={};
 let didPool={};let didReserved={};
 let serverUrl="";let lastSync="";let equip=[];
 const $=id=>document.getElementById(id);
@@ -403,7 +403,7 @@ function renderBrowse(){
     const title=(g.bygN||("Byggnad "+g.byg))+(g.ing?(" · ing "+g.ing):"");
     return '<div class="bgroup '+(open?'open':'')+'" data-g="'+encodeURIComponent(g.key)+'"><div class="bgh"><span class="chev">▶</span><div class="t">'+title+'<small>'+g.omr+' · '+(OMRADE[g.omr]||"")+'</small></div><div class="pr"><div class="pct">'+done+'/'+tot+' · '+pct+'%</div><div class="bar"><i style="width:'+pct+'%"></i></div></div></div><div class="objs"><button class="btn ghost bulkIng" data-g="'+encodeURIComponent(g.key)+'" style="width:100%;margin:8px 0;font-size:13px">⚡ Massinventera – välj flera</button>'+g.items.slice().sort((a,b)=>(a.lgh||a.hyres||"").localeCompare(b.lgh||b.hyres||"",'sv')).map(objRow).join("")+'</div></div>';}).join("");
   $("browse").querySelectorAll(".bgroup").forEach(el=>{const gk=decodeURIComponent(el.dataset.g);
-    el.querySelector(".bgh").onclick=()=>{openGroups[gk]=!openGroups[gk];el.classList.toggle("open");};
+    el.querySelector(".bgh").onclick=()=>{const willOpen=!openGroups[gk];if(willOpen){openGroups={};openGroups[gk]=true;$("browse").querySelectorAll(".bgroup").forEach(x=>x.classList.remove("open"));el.classList.add("open");const p=gk.split("|");activeGroup={omr:p[0],byg:p[1],ing:p[2]};}else{openGroups[gk]=false;el.classList.remove("open");activeGroup=null;}};
     el.querySelectorAll(".bulkIng").forEach(b=>b.onclick=ev=>{ev.stopPropagation();openBulk(decodeURIComponent(b.dataset.g));});
     el.querySelectorAll(".obj").forEach(r=>r.onclick=()=>openRecord(r.dataset.k));});
 }
@@ -484,18 +484,20 @@ function hideSheet(){$("ovl").classList.remove("show");recKey=null;sheetShown=fa
 function closeRecord(){if(sheetShown){try{history.back();}catch(e){hideSheet();}}else{hideSheet();}}
 window.addEventListener("popstate",()=>{if($("ovl").classList.contains("show"))hideSheet();});
 
+function genHyresId(omr,byg,ing,ben){const b3=String(byg||"").trim().padStart(3,"0");const i2=String(ing||"").trim().padStart(2,"0");const pre=((String(ben||"").trim().charAt(0))||"X").toUpperCase();const base=omr+"-"+b3+"-"+i2+"-"+pre;let n=0;objects.forEach(o=>{if(typeof o.hyres==="string"&&o.hyres.indexOf(base)===0){const rest=o.hyres.slice(base.length);if(/^\d+$/.test(rest))n=Math.max(n,parseInt(rest,10));}});return base+(n+1);}
 function openNewObject(){
-  const preOmr=filter.omr||"";
-  $("sheet").innerHTML='<div class="gripbar"><div class="ttl">Ny dörr / objekt<small>Skapas utanför objektlistan – märks "Tillagd"</small></div><button id="nClose">×</button></div>'+
+  const preOmr=(activeGroup&&activeGroup.omr)||filter.omr||"";const preByg=(activeGroup&&activeGroup.byg)||"";const preIng=(activeGroup&&activeGroup.ing)||"";const inGroup=!!activeGroup;
+  $("sheet").innerHTML='<div class="gripbar"><div class="ttl">'+(inGroup?"Ny dörr · Byggnad "+preByg+" · ing "+preIng:"Ny dörr / objekt")+'<small>'+(inGroup?"Skriv bara benämning – övrigt ifyllt":"Skapas utanför objektlistan – märks Tillagd")+'</small></div><button id="nClose">×</button></div>'+
     '<div class="wrap" style="padding-bottom:6px"><div class="card"><div class="body">'+
     '<div class="grid g2"><div class="field"><label>Område *</label><input id="nOmr" class="mono" list="omrlistGlobal" value="'+preOmr+'" maxlength="4" inputmode="numeric" placeholder="t.ex. 0108"><div class="hint" id="nOmrName">'+(OMRADE[preOmr]||"—")+'</div></div>'+
     '<div class="field"><label>Lägenhet / objektnr</label><input id="nLgh" class="mono" placeholder="—"></div></div>'+
-    '<div class="grid g2" style="margin-top:12px"><div class="field"><label>Byggnad</label><input id="nByg" class="mono" placeholder="002"></div><div class="field"><label>Ingång</label><input id="nIng" class="mono" placeholder="01"></div></div>'+
+    '<div class="grid g2" style="margin-top:12px"><div class="field"><label>Byggnad</label><input id="nByg" class="mono" value="'+preByg+'" placeholder="002"></div><div class="field"><label>Ingång</label><input id="nIng" class="mono" value="'+preIng+'" placeholder="01"></div></div>'+
     '<div class="grid g2" style="margin-top:12px"><div class="field"><label>Benämning</label><input id="nBen" placeholder="t.ex. Cykelrum"></div><div class="field"><label>Typ</label><input id="nTyp" placeholder="t.ex. Lokal förråd"></div></div>'+
     '<div class="hint" style="margin-top:12px">Bas-Dörr-id tilldelas automatiskt som nästa lediga för området. Lägg sedan till enheter som vanligt.</div>'+
     '</div></div></div>'+
     '<div class="savezone"><button class="btn primary" id="nCreate" style="flex:1">Skapa &amp; lägg till enheter</button></div>';
   showSheet();const S=$("sheet");
+  const bf=S.querySelector("#nBen");if(bf&&inGroup)setTimeout(()=>bf.focus(),120);
   S.querySelector("#nClose").onclick=closeRecord;
   S.querySelector("#nOmr").addEventListener("input",e=>{S.querySelector("#nOmrName").textContent=OMRADE[e.target.value.trim()]||"okänt område";});
   S.querySelector("#nCreate").onclick=()=>{
@@ -503,11 +505,15 @@ function openNewObject(){
     if(!/^\d{3,4}$/.test(omr)){toast("Ange en områdeskod");return;}
     const omr4=omr.padStart(4,"0");
     const nd=nextBaseDi(omr4);reserve(nd);
-    const o={key:(crypto.randomUUID?crypto.randomUUID():'x'+Date.now()+Math.random()),di:nd,hyres:"",omr:omr4,omrNamn:OMRADE[omr4]||"",fast:"",
-      byg:S.querySelector("#nByg").value.trim(),bygN:"",ing:S.querySelector("#nIng").value.trim(),ingN:"",lgh:S.querySelector("#nLgh").value.trim(),
-      benN:S.querySelector("#nBen").value.trim(),typ:S.querySelector("#nTyp").value.trim(),hyrtyp:"",rumben:S.querySelector("#nTyp").value.trim(),boa:"",loa:"",
+    let byg=S.querySelector("#nByg").value.trim();if(byg)byg=byg.padStart(3,"0");
+    let ing=S.querySelector("#nIng").value.trim();if(ing)ing=ing.padStart(2,"0");
+    const ben=S.querySelector("#nBen").value.trim();
+    const hy=genHyresId(omr4,byg,ing,ben);
+    const o={key:(crypto.randomUUID?crypto.randomUUID():'x'+Date.now()+Math.random()),di:nd,hyres:hy,omr:omr4,omrNamn:OMRADE[omr4]||"",fast:"",
+      byg:byg,bygN:"",ing:ing,ingN:"",lgh:(S.querySelector("#nLgh").value.trim()||hy.split("-").pop()),
+      benN:ben,typ:S.querySelector("#nTyp").value.trim(),hyrtyp:"",rumben:S.querySelector("#nTyp").value.trim(),boa:"",loa:"",
       components:[],trycke:false,tackbricka:false,laskista:false,ellas:false,dorrstangare:false,tillbeharFri:"",note:"",inv:"",ts:"",source:"tillagd"};
-    objects.push(o);persist();refreshAll();openRecord(o.key);toast("Nytt objekt · "+o.di);
+    objects.push(o);persist();refreshAll();openRecord(o.key);toast("Nytt objekt "+hy+" · "+o.di);
   };
 }
 
@@ -716,7 +722,7 @@ function init(){
   $("expJson").onclick=shareBackup;
   $("mergeBtn").onclick=()=>$("mergeFile").click();
   $("mergeFile").onchange=e=>{const f=e.target.files[0];if(!f)return;const rd=new FileReader();rd.onload=ev=>{mergeData(ev.target.result);e.target.value="";};rd.readAsText(f);};
-  $("clr").onclick=()=>{if(confirm("Radera ALLA "+objects.length+" objekt? Exportera först."))(objects=[],persist(),refreshAll(),toast("Allt rensat"));};
+  $("clr").onclick=()=>{if(!objects.length){toast("Inget att rensa");return;}if(!confirm("RENSA LOKALT på den här enheten?\n\nTar bort alla "+objects.length+" objekt från DENNA telefon/dator.\n\n• Data som redan synkats mot servern finns kvar och hämtas hem igen vid nästa synk.\n• Ej synkat arbete försvinner.\n• Dörr-id-listan och reservationerna påverkas INTE.\n\nSynka och/eller exportera först om du är osäker."))return;if(!confirm("Är du säker? Tryck OK för att rensa lokalt."))return;objects=[];persist();refreshAll();toast("Lokalt rensat – synka för att hämta hem igen");};
   $("ovl").onclick=e=>{if(e.target.id==="ovl")closeRecord();};
   $("fabNew").onclick=openNewObject;
   $("omrlistGlobal").innerHTML=Object.keys(OMRADE).map(k=>'<option value="'+k+'">'+k+' · '+OMRADE[k]+'</option>').join("");
