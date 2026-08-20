@@ -1,0 +1,14 @@
+services:
+  - type: web
+    name: certego-inventering
+    runtime: python
+    plan: starter
+    buildCommand: pip install -r requirements.txt
+    startCommand: gunicorn app:app --bind 0.0.0.0:$PORT
+    envVars:
+      - key: DATA_DIR
+        value: /data
+    disk:
+      name: certego-data
+      mountPath: /data
+      sizeGB: 1

@@ -1,0 +1,673 @@
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1, maximum-scale=1, viewport-fit=cover">
+<title>Certego inventering</title>
+<link rel="manifest" href="manifest.webmanifest">
+<meta name="theme-color" content="#283440">
+<meta name="apple-mobile-web-app-capable" content="yes">
+<meta name="apple-mobile-web-app-status-bar-style" content="black-translucent">
+<meta name="apple-mobile-web-app-title" content="Certego inventering">
+<link rel="apple-touch-icon" href="icon-192.png">
+<link rel="preconnect" href="https://fonts.googleapis.com">
+<link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+<link href="https://fonts.googleapis.com/css2?family=Space+Grotesk:wght@400;500;600;700&family=Inter:wght@400;500;600&family=IBM+Plex+Mono:wght@400;500;600&display=swap" rel="stylesheet">
+<script src="https://cdnjs.cloudflare.com/ajax/libs/xlsx/0.18.5/xlsx.full.min.js"></script>
+<style>
+  :root{
+    --bg:#E9ECEE;--panel:#FFFFFF;--ink:#16191D;--muted:#5C6670;
+    --line:#D5DADE;--line-soft:#E6E9EB;
+    --accent:#F25C05;--accent-deep:#C9410B;--accent-soft:#FEEADD;
+    --steel:#283440;--steel-soft:#EDF0F2;
+    --ok:#1E7A46;--ok-soft:#E2F0E8;--none:#AEB6BD;
+    --disp:"Space Grotesk",system-ui,sans-serif;--body:"Inter",system-ui,sans-serif;--mono:"IBM Plex Mono",ui-monospace,monospace;
+  }
+  *{box-sizing:border-box}html,body{margin:0}
+  body{background:var(--bg);color:var(--ink);font-family:var(--body);font-size:15px;line-height:1.45;-webkit-text-size-adjust:100%;padding-bottom:78px}
+  .wrap{max-width:780px;margin:0 auto;padding:0 14px}
+  header{position:sticky;top:0;z-index:30;background:var(--steel);color:#fff;border-bottom:3px solid var(--accent)}
+  .hd{max-width:780px;margin:0 auto;padding:11px 14px;display:flex;align-items:center;gap:12px}
+  .brand{font-family:var(--disp);font-weight:700;font-size:17px;letter-spacing:-.01em;line-height:1}
+  .brand small{display:block;font-family:var(--mono);font-weight:400;font-size:10px;letter-spacing:.14em;text-transform:uppercase;color:#9fb0bf;margin-top:3px}
+  .hdstat{margin-left:auto;text-align:right;font-family:var(--mono)}
+  .hdstat b{font-size:18px;font-weight:600}.hdstat span{font-size:9px;letter-spacing:.1em;text-transform:uppercase;color:#9fb0bf;display:block}
+  nav{position:fixed;bottom:0;left:0;right:0;z-index:40;background:#fff;border-top:1px solid var(--line);display:flex}
+  nav button{flex:1;background:none;border:none;padding:9px 4px 8px;font-family:var(--disp);font-weight:600;font-size:11px;letter-spacing:.04em;color:var(--muted);cursor:pointer}
+  nav button .ico{display:block;font-size:19px;margin-bottom:2px;line-height:1}
+  nav button.on{color:var(--accent-deep)}
+  .view{display:none}.view.on{display:block}
+  .card{background:var(--panel);border:1px solid var(--line);border-radius:12px;margin-top:14px;overflow:hidden}
+  .card .body{padding:14px 16px 16px}
+  h2.sec{font-family:var(--disp);font-size:12px;font-weight:600;letter-spacing:.12em;text-transform:uppercase;color:var(--muted);margin:18px 4px 0}
+  label{display:block;font-size:11px;font-weight:600;letter-spacing:.04em;text-transform:uppercase;color:var(--muted);margin:0 0 5px}
+  input,select,textarea{width:100%;font-family:var(--body);font-size:16px;color:var(--ink);background:#fff;border:1.5px solid var(--line);border-radius:9px;padding:11px 12px;outline:none;-webkit-appearance:none}
+  input.mono{font-family:var(--mono)}
+  input:focus,select:focus,textarea:focus{border-color:var(--accent);box-shadow:0 0 0 3px var(--accent-soft)}
+  .grid{display:grid;gap:12px}.g2{grid-template-columns:1fr 1fr}.field{min-width:0}
+  .hint{font-family:var(--mono);font-size:11.5px;color:var(--muted);line-height:1.5}
+  .drop{border:2px dashed var(--line);border-radius:14px;padding:28px 18px;text-align:center;cursor:pointer;transition:.15s;background:#fff}
+  .drop:hover,.drop.hot{border-color:var(--accent);background:var(--accent-soft)}
+  .drop .big{font-family:var(--disp);font-weight:600;font-size:17px}.drop .sub{color:var(--muted);font-size:13px;margin-top:5px}
+  .spitem{display:flex;align-items:center;gap:11px;border:1.5px solid var(--line);border-radius:10px;padding:11px 13px;margin-top:8px;cursor:pointer;background:#fff}
+  .spitem.on{border-color:var(--steel);background:var(--steel-soft)}
+  .spitem .cb{width:20px;height:20px;border-radius:6px;border:2px solid var(--line);flex:none;display:grid;place-items:center;color:#fff;font-size:13px}
+  .spitem.on .cb{background:var(--ok);border-color:var(--ok)}
+  .spitem .nm{font-family:var(--mono);font-size:13px;font-weight:500}.spitem .ct{margin-left:auto;font-family:var(--mono);font-size:12px;color:var(--muted)}
+  .btn{font-family:var(--disp);font-weight:600;font-size:15px;border:none;border-radius:11px;padding:13px 16px;cursor:pointer;transition:.12s}
+  .btn.primary{background:var(--accent);color:#fff;width:100%}.btn.primary:active{background:var(--accent-deep)}
+  .btn.ghost{background:#fff;color:var(--steel);border:1.5px solid var(--line)}
+  .bar{height:7px;border-radius:6px;background:var(--line-soft);overflow:hidden}
+  .bar i{display:block;height:100%;background:var(--ok);border-radius:6px;transition:width .3s}
+  .pct{font-family:var(--mono);font-size:12px;color:var(--muted)}
+  .filterbar{display:flex;gap:8px;margin-top:14px}.filterbar select{flex:1}
+  .bgroup{margin-top:14px;background:#fff;border:1px solid var(--line);border-radius:12px;overflow:hidden}
+  .bgh{padding:12px 14px;cursor:pointer;display:flex;align-items:center;gap:10px}
+  .bgh .t{font-family:var(--disp);font-weight:600;font-size:15px}.bgh .t small{display:block;font-family:var(--body);font-weight:400;font-size:11.5px;color:var(--muted)}
+  .bgh .pr{margin-left:auto;text-align:right;flex:none;width:110px}.bgh .pr .bar{margin-top:4px}
+  .bgh .chev{flex:none;color:var(--muted);transition:.2s;font-size:13px}.bgroup.open .chev{transform:rotate(90deg)}
+  .objs{display:none;padding:0 8px 8px}.bgroup.open .objs{display:block}
+  .obj{display:flex;align-items:center;gap:11px;padding:10px 8px;border-top:1px solid var(--line-soft);cursor:pointer}
+  .obj:hover{background:var(--steel-soft)}
+  .dot{width:11px;height:11px;border-radius:50%;flex:none;background:var(--none)}
+  .obj.done .dot{background:var(--ok)}
+  .obj .oi{min-width:0;flex:1}
+  .obj .oi .a{font-weight:600;font-size:14px;display:flex;gap:8px;align-items:baseline}
+  .obj .oi .a em{font-style:normal;font-family:var(--mono);font-size:11px;color:var(--muted);font-weight:400}
+  .obj .oi .b{font-family:var(--mono);font-size:11px;color:var(--muted);margin-top:2px;word-break:break-word}
+  .obj .di{font-family:var(--mono);font-size:11.5px;color:var(--accent-deep);font-weight:600;flex:none;text-align:right}
+  .obj .di small{display:block;color:var(--muted);font-weight:400;font-size:10px}
+  .empty{text-align:center;color:var(--muted);font-size:14px;padding:34px 16px;border:1.5px dashed var(--line);border-radius:12px;margin-top:14px;background:#fff}
+  .empty .big{font-family:var(--disp);font-weight:600;font-size:16px;color:var(--ink);margin-bottom:6px}
+  .kpis{display:grid;grid-template-columns:repeat(3,1fr);gap:9px;margin-top:14px}
+  .kpi{background:#fff;border:1px solid var(--line);border-radius:12px;padding:13px 12px;text-align:center}
+  .kpi b{font-family:var(--disp);font-weight:700;font-size:24px;display:block;line-height:1}.kpi span{font-size:10px;letter-spacing:.06em;text-transform:uppercase;color:var(--muted)}
+  .kpi.ok b{color:var(--ok)}.kpi.acc b{color:var(--accent-deep)}
+  .covrow{display:flex;align-items:center;gap:12px;padding:11px 4px;border-bottom:1px solid var(--line-soft)}
+  .covrow .nm{font-weight:600;font-size:14px;flex:none;width:130px}.covrow .nm small{display:block;font-weight:400;font-size:11px;color:var(--muted)}
+  .covrow .bar{flex:1}.covrow .pct{flex:none;width:78px;text-align:right}
+  .tools{display:flex;gap:8px;flex-wrap:wrap;margin-top:16px}
+  .tools button{font-family:var(--body);font-weight:600;font-size:13px;border:1.5px solid var(--line);background:#fff;border-radius:9px;padding:10px 13px;cursor:pointer;color:var(--steel)}
+  .tools button.danger{color:var(--accent-deep);border-color:#e7c3b5;margin-left:auto}
+  .ovl{position:fixed;inset:0;z-index:60;background:rgba(20,24,28,.5);display:none;align-items:flex-end}
+  .ovl.show{display:flex}
+  .sheet{background:var(--bg);width:100%;max-height:92vh;max-height:92dvh;display:flex;flex-direction:column;overflow:hidden;border-radius:18px 18px 0 0}
+  .sheet .wrap{flex:1 1 auto;min-height:0;overflow-y:auto;-webkit-overflow-scrolling:touch;overscroll-behavior:contain;padding:14px}
+  .gripbar{flex:none;display:flex;justify-content:space-between;align-items:flex-start;gap:10px;padding:14px 16px 10px;padding-top:max(14px,env(safe-area-inset-top));background:var(--bg);z-index:5;border-bottom:1px solid var(--line-soft)}
+  .gripbar .ttl{font-family:var(--disp);font-size:16px;font-weight:600}.gripbar .ttl small{display:block;font-family:var(--mono);font-size:11.5px;color:var(--muted);font-weight:400;margin-top:3px}
+  .gripbar button{flex:none;background:var(--steel-soft);border:none;font-size:24px;color:var(--steel);cursor:pointer;line-height:1;width:40px;height:40px;border-radius:50%;display:flex;align-items:center;justify-content:center}
+  .addrow{display:flex;flex-wrap:wrap;gap:7px}
+  .addchip{font-family:var(--body);font-size:13px;font-weight:600;border:1.5px dashed var(--accent);color:var(--accent-deep);background:var(--accent-soft);border-radius:999px;padding:8px 13px;cursor:pointer}
+  .addchip:active{background:#fdd8c2}
+  .comp{border:1px solid var(--line);border-left:4px solid var(--accent);border-radius:10px;padding:11px 12px;margin-top:9px;background:#fff}
+  .comp .top{display:flex;align-items:center;gap:10px}
+  .comp .cid{font-family:var(--mono);font-weight:600;font-size:14px;color:var(--accent-deep)}
+  .comp .cty{font-weight:600;font-size:14px}
+  .comp .rm{margin-left:auto;background:none;border:none;font-size:20px;color:var(--muted);cursor:pointer;line-height:1}
+  .comp .det{display:grid;grid-template-columns:1fr 84px;gap:8px;margin-top:9px}
+  .comp .det .fri{grid-column:1/-1}
+  .comp select,.comp input{font-size:14px;padding:9px 10px}
+  .chips{display:flex;flex-wrap:wrap;gap:7px}
+  .tog{display:inline-flex;align-items:center;gap:8px;border:1.5px solid var(--line);border-radius:9px;padding:8px 11px;cursor:pointer;font-size:13.5px;font-weight:500;background:#fff}
+  .tog .box{width:18px;height:18px;border-radius:5px;border:2px solid var(--line);flex:none;display:grid;place-items:center;color:#fff;font-size:12px}
+  .tog.on{border-color:var(--steel);background:var(--steel-soft)}.tog.on .box{background:var(--ok);border-color:var(--ok)}
+  .savezone{flex:none;background:var(--bg);padding:12px 16px;padding-bottom:max(18px,env(safe-area-inset-bottom));display:flex;gap:10px;border-top:1px solid var(--line-soft)}
+  .toast{position:fixed;bottom:90px;left:50%;transform:translateX(-50%);background:var(--steel);color:#fff;font-size:13.5px;font-weight:500;padding:10px 16px;border-radius:10px;z-index:80;opacity:0;transition:.2s;pointer-events:none}
+  .toast.show{opacity:1}
+  .fab{position:fixed;right:16px;bottom:70px;z-index:45;background:var(--accent);color:#fff;border:none;border-radius:16px;padding:14px 18px;font-family:var(--disp);font-weight:700;font-size:15px;box-shadow:0 6px 18px rgba(242,92,5,.4);cursor:pointer}
+  .fab:active{background:var(--accent-deep)}
+  .badge{font-size:10px;font-weight:700;letter-spacing:.04em;text-transform:uppercase;background:var(--accent-soft);color:var(--accent-deep);border-radius:5px;padding:2px 6px;margin-left:2px}
+</style>
+
+<header><div class="hd">
+  <div class="brand">Certego inventering<small>Uppsalahem · Digitala lås</small></div>
+  <div class="hdstat"><b id="hdPct">0%</b><span id="hdSub">0 objekt</span></div>
+</div></header>
+
+<div class="wrap">
+  <section class="view on" id="vInv">
+    <div id="invEmpty" class="empty" style="display:none"><div class="big">Ingen objektlista inläst</div>Importera kundens objektslista under fliken <b>Importera</b> — varje lägenhet, lokal och förråd blir avbockningsbart.</div>
+    <div id="invMain">
+      <div class="filterbar">
+        <select id="fOmr"></select>
+        <select id="fStat"><option value="">Alla objekt</option><option value="kvar">Kvar att göra</option><option value="klar">Klara</option></select>
+      </div>
+      <div id="missingBanner"></div>
+      <div id="browse"></div>
+    </div>
+    <button class="fab" id="fabNew">+ Ny dörr</button>
+  </section>
+
+  <section class="view" id="vUtr">
+    <h2 class="sec">Lägg till utrustning</h2>
+    <div class="card"><div class="body">
+      <div class="grid g2">
+        <div class="field"><label>Område *</label><input id="eOmr" class="mono" list="omrlistGlobal" maxlength="4" inputmode="numeric" placeholder="t.ex. 0108"><div class="hint" id="eOmrName">—</div></div>
+        <div class="field"><label>Byggnad / ingång (valfritt)</label><select id="eBygIng"><option value="">— hela området —</option></select></div>
+      </div>
+      <label style="margin-top:14px">Benämning</label>
+      <div class="addrow" id="eChips"></div>
+      <input id="eBen" style="margin-top:9px" placeholder="Benämning, t.ex. Styra 3000">
+      <div class="grid g2" style="margin-top:9px;align-items:end">
+        <div class="field"><label>Antal</label><input id="eAnt" type="number" inputmode="numeric" value="1" min="1"></div>
+        <div class="field"><button class="btn primary" id="eAdd">Lägg till</button></div>
+      </div>
+    </div></div>
+    <h2 class="sec">Registrerad utrustning</h2>
+    <div id="equipList"></div>
+  </section>
+
+  <section class="view" id="vImp">
+    <h2 class="sec">Importera objektslista</h2>
+    <div class="card"><div class="body">
+      <div class="drop" id="drop"><div class="big">Välj Excel-fil</div><div class="sub">Kundens objektslista (.xlsx). Du väljer vilka blad som läses in.</div></div>
+      <input type="file" id="file" accept=".xlsx,.xls,.csv" hidden>
+      <div id="sheetPick"></div>
+      <div id="impAction" style="margin-top:12px;display:none"><button class="btn primary" id="impGo">Läs in valda blad</button></div>
+      <div id="impResult" class="hint" style="margin-top:12px"></div>
+      <div id="poolStatus" class="hint" style="margin-top:10px;padding:10px 12px;border-radius:9px;background:var(--steel-soft)"></div>
+    </div></div>
+    <div class="hint" style="margin:12px 4px;line-height:1.6">Appen hittar rubrikraden själv och mappar kolumnerna (lägenhetsnummer, hyresobjekt-id, byggnad, ingång, typ, Dörr-id m.m.). Redan inlästa objekt behåller sina enheter. Kör om när ni får nya områden.</div>
+  </section>
+
+  <section class="view" id="vOv">
+    <h2 class="sec">Översikt</h2>
+    <div class="kpis">
+      <div class="kpi"><b id="kTot">0</b><span>Objekt</span></div>
+      <div class="kpi ok"><b id="kDone">0</b><span>Klara</span></div>
+      <div class="kpi acc"><b id="kComp">0</b><span>Dörr-id satta</span></div>
+    </div>
+    <h2 class="sec">Täckning per område</h2>
+    <div class="card"><div class="body" id="coverage"></div></div>
+    <h2 class="sec">Server &amp; synk</h2>
+    <div class="card"><div class="body">
+      <label>Serveradress (lämna tom om appen körs från servern)</label>
+      <input id="srvUrl" placeholder="t.ex. https://las.internt.certego.se">
+      <button class="btn primary" id="syncBtn" style="margin-top:12px">Synka mot server</button>
+      <div class="hint" id="syncStatus" style="margin-top:10px"></div>
+    </div></div>
+    <div class="tools">
+      <button id="expCsv">Exportera programmeringslista</button>
+      <button id="expObj">Exportera objektlista</button>
+      <button id="expEquip">Exportera utrustning</button>
+      <button id="expJson">Dela / spara backup</button>
+      <button id="mergeBtn">Slå ihop backup</button>
+      <button id="clr" class="danger">Rensa allt</button>
+    </div>
+    <div class="hint" style="margin:12px 4px;line-height:1.6">Programmeringslistan har <b>en rad per Dörr-id</b> (varje enhet att programmera). Objekt utan enheter kommer med markerade "ej tilldelad" så inget tappas bort. Avgränsare <b>;</b> (svensk Excel).</div>
+  </section>
+</div>
+
+<nav>
+  <button class="on" data-v="vInv"><span class="ico">▦</span>Inventera</button>
+  <button data-v="vUtr"><span class="ico">⚙</span>Utrustning</button>
+  <button data-v="vImp"><span class="ico">↥</span>Importera</button>
+  <button data-v="vOv"><span class="ico">◉</span>Översikt</button>
+</nav>
+
+<div class="ovl" id="ovl"><div class="sheet" id="sheet"></div></div>
+<datalist id="omrlistGlobal"></datalist>
+<input type="file" id="mergeFile" accept=".json,application/json" hidden>
+<div class="toast" id="toast"></div>
+
+<script>
+const OMRADE = {"0101":"Tuna Backar","0102":"Idun Hagbard","0103":"Frodeparken","0104":"Blenda","0105":"Toven","0106":"Einar Sverre","0107":"Gudrun","0108":"Tegnerparken","0109":"Fyrisvallen","0110":"Mjölnaren","0112":"Åpromenaden","0114":"Björklinge Södra Långåsvägen","0115":"Prästgårdshöjden","0117":"Brandstationen","0170":"Lyckebo","0171":"Storvreta","0186":"Bälinge Allmänningsvägen","0188":"Strandängen Samfälligh","0193":"Idun","0195":"Nya Tuna Backar","0221":"S Kvarngärdet","0230":"Koret","0292":"Folkvang","0326":"Kastanjen","0327":"Salabackar","0328":"Sala Hage","0329":"Arkitekten","0330":"Gröna Gatan 1","0331":"Gröna Gatan 2","0332":"Gröna Gatan 3","0333":"Blåklinten","0334":"Brillinge","0335":"Slavsta","0377":"Källsprånget","0380":"Klarbäret, Slavsta","0393":"Tåhättan","0408":"Rickomberga","0409":"Kullerstenen","0410":"Stenbacken","0411":"Opalen","0412":"Citrinen-Bärnstenen","0416":"Nya Täljstenen","0425":"Cementgjuteriet","0426":"Betongplattan","0427":"Gjutformen","0428":"Cementsilon","0432":"Kåbo 2","0435":"Kåbo 1","0436":"Lassebygärde","0437":"Haubitsen","0438":"Täljstenen","0440":"Moränen","0441":"Marmorn-Kalkstenen","0442":"Bärum","0443":"Fredriksberg","0444":"Nordkalotten","0472":"Ekebyvallen","0473":"Tavastehusgatan","0475":"Norden/Tartu","0478":"Nya Haubitsen","0479":"Vangsby Vänge","0484":"Håga By","0546":"Vårdsätra Backe","0547":"Malmavägen","0548":"Rosendal","0549":"Rangström","0550":"August Söderman Jämna","0551":"August Söderman Udda","0552":"Stenhammar Blomdahl","0553":"Peterson Berger Udda","0554":"Peterson Berger Jämna","0556":"Jenny Lind","0557":"Oscar Arpi","0558":"Solisten Gård 1.2.3","0559":"Dirigenten Gård 6.7.8","0560":"Flöjten Gård 9.10","0569":"Trasthagen","0580":"Nya Aug Söderman","0591":"Flöjtvägen","0592":"Valthornsvägen","0593":"Björngården","0640":"Östra Bäcklösa","0652":"Ulleråker","0660":"Nåntuna-Hage","0661":"Gotlandsresan","0662":"Renblomman","0663":"Blå Jungfrun","0664":"Gunsta Ekervägen","0666":"Almunge Lövsta","0672":"Länna Malm-Jerker","0674":"Gunsta Villav/Skråttvägen","0681":"Krogen","0682":"Lännaholm P-hem","0885":"Östra Orgeln","0886":"Holmfrid","0888":"Kapplasse","0889":"Örtegården","0891":"Gimle","0896":"Ringgatan","0897":"Klockarbo","0898":"Klockarlunden","0986":"Modullägenheter Marmorvägen","7001":"Gamla Studentstaden","7002":"Rackarberget","7005":"Blodstenen","7006":"Djäknegatan Höghus","7007":"Väktargatan","7009":"Djäknegatan Låghus","7011":"Flogstavägen","7421":"Observatoriet","7433":"Dag Hammarskjölds väg","7434":"Blåsenhus","7471":"Ekeby","7540":"Dansmästaren"};
+
+const CTYPES=[{t:"Oval",pref:1},{t:"Postfack",pref:2},{t:"Hänglås",pref:3},{t:"Hänglås Anchor",pref:3},{t:"Oval in- och utsida",pref:1},{t:"Kortläsare/Porttelefon",pref:5}];
+const PREF=Object.fromEntries(CTYPES.map(c=>[c.t,c.pref]));
+const UTRYMMEN=["Lägenhetsdörr","Entré","Källargång","Cykelrum","Barnvagnsrum","Tvättstuga","Miljöhus/Soprum","Förråd","Källarförråd","Vindsförråd","Teknikrum","Elnisch","Undercentral","Garage","Postfacksrum","Gemensamhetslokal","Skyddsrum","Annat (fritext)"];
+const TOGS=[["trycke","Trycke"],["tackbricka","Täckbricka"],["laskista","Låskista"],["ellas","El-lås"],["dorrstangare","Dörrstängare"]];
+const TKEYS=TOGS.map(t=>t[0]);
+const EQUIP=["Centralapparat","Styra 3000","Styra komkort 4000","Dörrbox","Likriktare","Nätaggregat","Kortläsare","Porttelefon","Manöverpanel","Slingantenn","Motorlås"];
+
+let objects=[];let filter={omr:"",stat:""};let openGroups={};let parsedWb=null,pickedSheets={};
+let didPool={};let didReserved={};
+let serverUrl="";let lastSync="";let equip=[];
+const $=id=>document.getElementById(id);
+
+const store={
+  async get(k){
+    try{if(window.localStorage){const v=localStorage.getItem(k);if(v!=null)return v;}}catch(e){}
+    try{if(window.storage){const r=await window.storage.get(k);return r&&r.value;}}catch(e){}
+    return null;
+  },
+  async set(k,val){
+    try{if(window.localStorage){localStorage.setItem(k,val);return true;}}catch(e){}
+    try{if(window.storage){await window.storage.set(k,val);return true;}}catch(e){}
+    return false;
+  }
+};
+async function load(){
+  try{const v=await store.get("uh_objects_v3");if(v)objects=JSON.parse(v);}catch(e){}
+  try{const p=await store.get("uh_didpool_v3");if(p)didPool=JSON.parse(p);}catch(e){}
+  try{const rsv=await store.get("uh_didreserved_v3");if(rsv)didReserved=JSON.parse(rsv);}catch(e){}
+  try{serverUrl=(await store.get("uh_server"))||"";}catch(e){}
+  try{lastSync=(await store.get("uh_lastsync"))||"";}catch(e){}
+  try{const eq=await store.get("uh_equip_v3");if(eq)equip=JSON.parse(eq);}catch(e){}
+  let changed=false;objects.forEach(o=>{if(o.di&&!/^DI\d/i.test(o.di)){o.di="";o.diAssigned=false;changed=true;}});
+  if(changed)persist();
+}
+let st=null;function persist(){clearTimeout(st);st=setTimeout(()=>{store.set("uh_objects_v3",JSON.stringify(objects)).then(ok=>{if(!ok)toast("Kunde inte spara lokalt");});},250);}
+function savePool(){store.set("uh_didpool_v3",JSON.stringify(didPool));}
+function saveReserved(){store.set("uh_didreserved_v3",JSON.stringify(didReserved));}
+function reserve(id){if(id){didReserved[id]=true;saveReserved();}}
+function saveEquip(){store.set("uh_equip_v3",JSON.stringify(equip));}
+// ---- foto (IndexedDB + komprimering) ----
+const PDB="certego_photos";
+function pdb(){return new Promise((res,rej)=>{try{const r=indexedDB.open(PDB,1);r.onupgradeneeded=()=>{r.result.createObjectStore("ph");};r.onsuccess=()=>res(r.result);r.onerror=()=>rej(r.error);}catch(e){rej(e);}});}
+async function photoPut(id,d){const db=await pdb();return new Promise((res,rej)=>{const tx=db.transaction("ph","readwrite");tx.objectStore("ph").put(d,id);tx.oncomplete=()=>res();tx.onerror=()=>rej(tx.error);});}
+async function photoGet(id){try{const db=await pdb();return await new Promise((res)=>{const rq=db.transaction("ph","readonly").objectStore("ph").get(id);rq.onsuccess=()=>res(rq.result||null);rq.onerror=()=>res(null);});}catch(e){return null;}}
+async function photoDel(id){try{const db=await pdb();await new Promise((res)=>{const tx=db.transaction("ph","readwrite");tx.objectStore("ph").delete(id);tx.oncomplete=()=>res();tx.onerror=()=>res();});}catch(e){}}
+async function photoKeys(){try{const db=await pdb();return await new Promise((res)=>{const rq=db.transaction("ph","readonly").objectStore("ph").getAllKeys();rq.onsuccess=()=>res(rq.result||[]);rq.onerror=()=>res([]);});}catch(e){return [];}}
+function compressImage(file,maxPx,q){return new Promise((res,rej)=>{const img=new Image();const url=URL.createObjectURL(file);img.onload=()=>{let w=img.width,h=img.height;const sc=Math.min(1,maxPx/Math.max(w,h));const cw=Math.round(w*sc),ch=Math.round(h*sc);const cv=document.createElement("canvas");cv.width=cw;cv.height=ch;cv.getContext("2d").drawImage(img,0,0,cw,ch);URL.revokeObjectURL(url);res(cv.toDataURL("image/jpeg",q));};img.onerror=()=>{URL.revokeObjectURL(url);rej(new Error("img"));};img.src=url;});}
+function blobToDataURL(b){return new Promise(res=>{const r=new FileReader();r.onload=()=>res(r.result);r.onerror=()=>res(null);r.readAsDataURL(b);});}
+function viewPhoto(src){const o=document.createElement("div");o.style.cssText="position:fixed;inset:0;z-index:90;background:rgba(0,0,0,.92);display:flex;align-items:center;justify-content:center";o.innerHTML='<img src="'+src+'" style="max-width:96%;max-height:96%;border-radius:8px">';o.onclick=()=>o.remove();document.body.appendChild(o);}
+async function renderPhotos(o){
+  const wrap=$("photoWrap");if(!wrap)return;const ids=o.photos||[];let html="";
+  for(const id of ids){const d=await photoGet(id);if(d)html+='<div style="position:relative;margin-right:8px"><img src="'+d+'" class="pthumb" style="width:84px;height:84px;object-fit:cover;border-radius:9px;border:1px solid var(--line)"><button class="prm" data-id="'+id+'" style="position:absolute;top:-7px;right:-1px;background:var(--accent-deep);color:#fff;border:none;border-radius:50%;width:22px;height:22px;font-size:14px;cursor:pointer">×</button></div>';}
+  if(ids.length<2)html+='<button id="photoAdd" class="addchip" style="height:84px;width:84px;border-radius:9px;font-size:26px;display:flex;align-items:center;justify-content:center">📷</button>';
+  wrap.innerHTML=html;
+  const add=$("photoAdd");if(add)add.onclick=()=>$("photoInput").click();
+  wrap.querySelectorAll(".pthumb").forEach(im=>im.onclick=()=>viewPhoto(im.src));
+  wrap.querySelectorAll(".prm").forEach(b=>b.onclick=async()=>{await photoDel(b.dataset.id);o.photos=(o.photos||[]).filter(x=>x!==b.dataset.id);o.ts=new Date().toISOString();persist();renderPhotos(o);refreshAll();});
+}
+
+const norm=s=>String(s==null?"":s).toLowerCase().replace(/\s+/g," ").trim();
+function findHeaderRow(rows){
+  for(let i=0;i<Math.min(rows.length,8);i++){const c=rows[i].map(norm);if(c.some(x=>x.includes("hyresid")||x.includes("rumsid"))&&c.some(x=>x.includes("lägenhetsnummer")||x.includes("byggnad")||x.includes("dörr-id")))return i;}
+  for(let i=0;i<Math.min(rows.length,8);i++){if(rows[i].map(norm).some(x=>x.includes("lägenhetsnummer")))return i;}
+  return 0;
+}
+function mapCols(hdr){
+  const h=hdr.map(norm),find=(p,a)=>{for(let i=0;i<h.length;i++){if(a&&a.some(x=>h[i].includes(x)))continue;if(p.some(x=>h[i].includes(x)))return i;}return -1;};
+  return {fast:find(["fastighetsbeteckning"]),omr:find(["område"],["benämning"]),byg:find(["byggnad"],["benämning"]),
+    bygN:find(["byggnad, benämning","byggnad benämning"]),ing:find(["ingång"],["benämning"]),ingN:find(["ingång, benämning","ingång benämning"]),
+    lgh:find(["lägenhetsnummer"]),benN:find(["benämning"],["område","byggnad","ingång","typ","komponent","rum","rumstyp"]),
+    typ:find(["hyresobjekttyp"]),typ2:find(["typ, benämning","typ benämning"],["hyresobjekttyp"]),boa:find(["boa"]),loa:find(["loa"]),
+    rum:find(["rum.benämning","rum benämning","rum, benämning"]),
+    hyres:find(["hyresid","rumsid"]),di:find(["dörr-id","dörr id"])};
+}
+function cell(row,i){return i>=0&&i<row.length?String(row[i]==null?"":row[i]).trim():"";}
+function importPoolRows(rows){
+  let hr=0;for(let i=0;i<Math.min(rows.length,8);i++){const c=rows[i].map(norm);if(c.some(x=>x.includes("dörr-id")||x.includes("dörr id"))&&c.some(x=>x.includes("område"))){hr=i;break;}}
+  const hh=rows[hr].map(norm);let di=-1,om=-1;
+  for(let i=0;i<hh.length;i++){if(di<0&&(hh[i].includes("dörr-id")||hh[i].includes("dörr id")))di=i;if(om<0&&hh[i].includes("område"))om=i;}
+  let n=0;for(let r=hr+1;r<rows.length;r++){const id=cell(rows[r],di);if(!/^DI\d/i.test(id))continue;const omr=cell(rows[r],om).padStart(4,"0");(didPool[omr]=didPool[omr]||[]).push(id);n++;}
+  return n;
+}
+function isPoolSheet(rows){
+  const flat=rows.slice(0,8).map(r=>r.map(norm));
+  const obj=flat.some(r=>r.some(x=>x.includes("hyresid")||x.includes("lägenhetsnummer")));
+  if(obj)return false;
+  return flat.some(r=>r.some(x=>x.includes("dörr-id")||x.includes("dörr id")))&&flat.some(r=>r.some(x=>x.includes("område")));
+}
+function importSheets(){
+  let added=0,refreshed=0,poolIds=0,used=0;const byKey={};objects.forEach(o=>byKey[o.key]=o);
+  Object.keys(pickedSheets).forEach(sn=>{if(!pickedSheets[sn])return;used++;
+    const rows=XLSX.utils.sheet_to_json(parsedWb.Sheets[sn],{header:1,raw:false,defval:""});
+    if(isPoolSheet(rows)){poolIds+=importPoolRows(rows);return;}
+    const hr=findHeaderRow(rows),m=mapCols(rows[hr]);
+    for(let r=hr+1;r<rows.length;r++){const row=rows[r];if(!row||!row.length)continue;
+      const hyres=cell(row,m.hyres),lgh=cell(row,m.lgh),omr=cell(row,m.omr).padStart(4,"0");
+      let di=cell(row,m.di);if(!/^DI\d/i.test(di))di="";
+      if(!hyres&&!di&&!lgh)continue;if(!/^\d{4}$/.test(omr)&&!OMRADE[omr])continue;
+      const key=di||hyres||(omr+"|"+cell(row,m.byg)+"|"+cell(row,m.ing)+"|"+lgh);
+      const desc={hyres,omr,omrNamn:OMRADE[omr]||cell(row,m.omr),fast:cell(row,m.fast),byg:cell(row,m.byg),bygN:cell(row,m.bygN),ing:cell(row,m.ing),ingN:cell(row,m.ingN),lgh,benN:cell(row,m.benN),hyrtyp:cell(row,m.typ),typ:cell(row,m.typ2),rumben:cell(row,m.rum),boa:cell(row,m.boa),loa:cell(row,m.loa)};
+      const ex=byKey[key];
+      if(ex){Object.assign(ex,desc);if(!ex.di&&di)ex.di=di;refreshed++;continue;}
+      const rec=Object.assign({key,di,components:[],trycke:false,tackbricka:false,laskista:false,ellas:false,dorrstangare:false,tillbeharFri:"",note:"",inv:"",ts:"",source:"import",diAssigned:false},desc);
+      objects.push(rec);byKey[key]=rec;added++;}
+  });
+  Object.keys(didPool).forEach(k=>{didPool[k]=[...new Set(didPool[k])];});
+  objects.forEach(o=>{if(o.di)didReserved[o.di]=true;});
+  savePool();saveReserved();persist();
+  const poolN=Object.keys(didPool).length;
+  $("impResult").innerHTML='<b style="color:var(--ok)">Klart.</b> '+added+' nya objekt'+(refreshed?' ('+refreshed+' uppdaterade)':'')+'. '+(poolIds?poolIds+' Dörr-id inlästa till listan ('+poolN+' områden). ':'')+'Totalt: '+objects.length+' objekt.';
+  parsedWb=null;pickedSheets={};$("sheetPick").innerHTML="";$("impAction").style.display="none";refreshAll();
+}
+function handleFile(f){
+  $("impResult").textContent="Läser "+f.name+" …";const rd=new FileReader();
+  rd.onload=e=>{try{parsedWb=XLSX.read(e.target.result,{type:"array"});pickedSheets={};
+    $("sheetPick").innerHTML=parsedWb.SheetNames.map(n=>{
+      const rows=XLSX.utils.sheet_to_json(parsedWb.Sheets[n],{header:1,raw:false,defval:""});
+      const looks=rows.slice(0,8).some(r=>r.map(norm).some(x=>x.includes("hyresid")||x.includes("lägenhetsnummer")));
+      if(looks)pickedSheets[n]=true;
+      return '<div class="spitem '+(looks?'on':'')+'" data-n="'+encodeURIComponent(n)+'"><span class="cb">'+(looks?'✓':'')+'</span><span class="nm">'+n+'</span><span class="ct">'+rows.length+' rader'+(looks?' · objektlista':'')+'</span></div>';
+    }).join("");
+    $("sheetPick").querySelectorAll(".spitem").forEach(el=>el.onclick=()=>{const n=decodeURIComponent(el.dataset.n);pickedSheets[n]=!pickedSheets[n];el.classList.toggle("on",pickedSheets[n]);el.querySelector(".cb").textContent=pickedSheets[n]?"✓":"";});
+    $("impAction").style.display="block";
+    $("impResult").innerHTML='Hittade <b>'+parsedWb.SheetNames.length+'</b> blad. Markera och läs in.';
+  }catch(err){$("impResult").innerHTML='<b style="color:var(--accent-deep)">Kunde inte läsa filen.</b> '+err.message;}};
+  rd.readAsArrayBuffer(f);
+}
+
+const isDone=o=>o.components&&o.components.length>0;
+function rumskod(o){const m=/-([^-]+)$/.exec(o.hyres||"");const t=m?m[1]:"";return /^\d+$/.test(t)?"":t;}
+function benLabel(o){return o.benN||o.typ||o.rumben||o.hyrtyp||rumskod(o)||"Objekt";}
+function aptText(o){return norm((o.rumben||"")+" "+(o.typ||"")+" "+(o.hyrtyp||""));}
+function roomCount(o){const m=aptText(o).match(/(\d+)\s*(?:rum|rok|rk|r\s*o\s*k)/);return m?parseInt(m[1],10):null;}
+function isApartment(o){const t=aptText(o);if(/student/.test(t))return true;if(/\b(lägenhet|bostad|lgh|ungdomsbostad)\b/.test(t))return true;if(/(\d+)\s*(?:rum|rok|rk|r\s*o\s*k)/.test(t))return true;return false;}
+function keyCount(o){if(!isApartment(o))return "";if(/student/.test(aptText(o)))return 2;return Math.max(2,roomCount(o)||2);}
+function sizeText(o){for(const f of [o.rumben,o.typ,o.hyrtyp]){const s=String(f||"");if(/(\d+)\s*(?:rum|rok|rk|r\s*o\s*k)/.test(norm(s)))return s.trim();}return "";}
+function nextBaseDi(omr){
+  const pool=didPool[omr];
+  if(pool&&pool.length){for(let i=0;i<pool.length;i++){const id=pool[i];if(!didReserved[id]&&!objects.some(o=>o.di===id))return id;}}
+  let max=2000;objects.forEach(o=>{if(o.omr===omr){const m=/^DI\d{4}(\d+)$/.exec(o.di||"");if(m)max=Math.max(max,+m[1]);}});
+  const rx=new RegExp('^DI'+omr+'(\\d+)$');Object.keys(didReserved).forEach(id=>{const m=rx.exec(id);if(m)max=Math.max(max,+m[1]);});
+  return "DI"+omr+(max+1);
+}
+function nextSuffix(comps,typ){const used=comps.map(c=>c.suffix);const pref=PREF[typ]||6;if(!used.includes(pref))return pref;return (used.length?Math.max.apply(null,used):0)+1;}
+
+function omrOptions(){const used=[...new Set(objects.map(o=>o.omr))].sort();
+  $("fOmr").innerHTML='<option value="">Alla områden</option>'+used.map(o=>'<option value="'+o+'">'+o+' · '+(OMRADE[o]||"")+'</option>').join("");$("fOmr").value=filter.omr;}
+function bulkAssign(){
+  const scope=objects.filter(o=>(!filter.omr||o.omr===filter.omr)&&!o.di);
+  if(!scope.length){toast("Inga objekt saknar bas-Dörr-id");return;}
+  if(!confirm("Tilldela bas-Dörr-id till "+scope.length+" objekt"+(filter.omr?(" i område "+filter.omr):" (alla områden)")+"?\n\nNumren dras ur den officiella listan. Objekt som inte ska ha lås (t.ex. bilplats) bör du hoppa över — ångra genom att ta bort objektet om det blev fel.")) return;
+  scope.forEach(o=>{o.di=nextBaseDi(o.omr);o.diAssigned=true;didReserved[o.di]=true;});
+  saveReserved();persist();refreshAll();toast(scope.length+" objekt fick bas-Dörr-id");
+}
+function renderBrowse(){
+  const missing=objects.filter(o=>(!filter.omr||o.omr===filter.omr)&&!o.di).length;
+  const mb=$("missingBanner");
+  if(mb){mb.innerHTML=missing?('<div style="background:#fde8c8;border:1px solid #f3c4a8;border-radius:10px;padding:11px 13px;margin-top:12px;display:flex;align-items:center;gap:10px;font-size:13.5px"><span><b>'+missing+'</b> objekt saknar bas-Dörr-id'+(filter.omr?'':' (alla områden)')+'</span><button class="btn ghost" id="bulkBtn" style="margin-left:auto;flex:0 0 auto;padding:9px 13px;font-size:13px">Tilldela alla</button></div>'):'';if(missing){const bb=$("bulkBtn");if(bb)bb.onclick=bulkAssign;}}
+  const has=objects.length>0;$("invEmpty").style.display=has?"none":"block";$("invMain").style.display=has?"block":"none";if(!has)return;
+  let list=objects.filter(o=>(!filter.omr||o.omr===filter.omr)&&(!filter.stat||(filter.stat==="klar"?isDone(o):!isDone(o))));
+  const groups={};list.forEach(o=>{const gk=o.omr+"|"+(o.byg||"")+"|"+(o.ing||"");(groups[gk]=groups[gk]||{key:gk,omr:o.omr,byg:o.byg,ing:o.ing,bygN:o.bygN,items:[]}).items.push(o);});
+  const arr=Object.values(groups).sort((a,b)=>(a.omr+a.byg+a.ing).localeCompare(b.omr+b.byg+b.ing,'sv'));
+  if(!arr.length){$("browse").innerHTML='<div class="empty">Inga objekt matchar filtret.</div>';return;}
+  $("browse").innerHTML=arr.map(g=>{const done=g.items.filter(isDone).length,tot=g.items.length,pct=Math.round(done/tot*100),open=openGroups[g.key];
+    const title=(g.bygN||("Byggnad "+g.byg))+(g.ing?(" · ing "+g.ing):"");
+    return '<div class="bgroup '+(open?'open':'')+'" data-g="'+encodeURIComponent(g.key)+'"><div class="bgh"><span class="chev">▶</span><div class="t">'+title+'<small>'+g.omr+' · '+(OMRADE[g.omr]||"")+'</small></div><div class="pr"><div class="pct">'+done+'/'+tot+' · '+pct+'%</div><div class="bar"><i style="width:'+pct+'%"></i></div></div></div><div class="objs"><button class="btn ghost bulkIng" data-g="'+encodeURIComponent(g.key)+'" style="width:100%;margin:8px 0;font-size:13px">⚡ Massinventera – välj flera</button>'+g.items.slice().sort((a,b)=>(a.lgh||a.hyres||"").localeCompare(b.lgh||b.hyres||"",'sv')).map(objRow).join("")+'</div></div>';}).join("");
+  $("browse").querySelectorAll(".bgroup").forEach(el=>{const gk=decodeURIComponent(el.dataset.g);
+    el.querySelector(".bgh").onclick=()=>{openGroups[gk]=!openGroups[gk];el.classList.toggle("open");};
+    el.querySelectorAll(".bulkIng").forEach(b=>b.onclick=ev=>{ev.stopPropagation();openBulk(decodeURIComponent(b.dataset.g));});
+    el.querySelectorAll(".obj").forEach(r=>r.onclick=()=>openRecord(r.dataset.k));});
+}
+function objRow(o){
+  const lbl=benLabel(o);const sufs=isDone(o)?o.components.map(c=>"-"+c.suffix).join(" "):"";
+  return '<div class="obj '+(isDone(o)?'done':'')+'" data-k="'+o.key+'"><span class="dot"></span><div class="oi"><div class="a">'+(o.lgh?('Lgh '+o.lgh):benLabel(o))+' <em>'+(o.lgh?lbl:(o.typ||''))+'</em>'+(o.source==='tillagd'?'<span class="badge">Tillagd</span>':'')+(!o.di?'<span class="badge" style="background:#fde8c8;color:#92560a">Bas-id saknas</span>':'')+((o.photos&&o.photos.length)?'<span class="badge" style="background:#e2f0e8;color:#1e7a46">📷'+o.photos.length+'</span>':'')+'</div><div class="b">'+(o.hyres||'')+(sufs?' · '+sufs:'')+'</div></div><span class="di">'+(o.di||'—')+'<small>'+(isDone(o)?o.components.length+' enh':'ingen enhet')+'</small></span></div>';
+}
+
+let recKey=null,draft=null,recObj=null;
+function openRecord(key){
+  const o=objects.find(x=>x.key===key);if(!o)return;recKey=key;
+  draft={comps:JSON.parse(JSON.stringify(o.components||[])),tillbeharFri:o.tillbeharFri||"",note:o.note||"",inv:o.inv||""};
+  TKEYS.forEach(k=>draft[k]=!!o[k]);
+  $("sheet").innerHTML='<div class="gripbar"><div class="ttl">'+(o.lgh?('Lägenhet '+o.lgh):benLabel(o))+'<small id="recSub">Bas: '+(o.di||'(saknas)')+' · '+(o.hyres||'')+'</small></div><button id="rClose">×</button></div>'+
+    '<div class="wrap" style="padding-bottom:6px"><div class="card"><div class="body">'+
+    '<div class="hint" style="margin-bottom:12px">'+(o.bygN||'')+' '+(o.ing?'· ing '+o.ing:'')+' · '+benLabel(o)+'</div>'+
+    (keyCount(o)?'<div class="hint" style="margin:-4px 0 12px;color:var(--accent-deep)"><b>Nycklar att skapa: '+keyCount(o)+'</b>'+(sizeText(o)?' · '+sizeText(o):'')+'</div>':'')+
+    (!o.di?'<div id="baseWarn" style="background:var(--accent-soft);border:1px solid #f3c4a8;border-radius:10px;padding:11px 12px;margin-bottom:12px;font-size:13px;line-height:1.5">Inget bas-Dörr-id i underlaget för detta objekt.<button class="btn ghost" id="assignBase" style="margin-top:9px;width:100%;font-size:13.5px">Tilldela nästa lediga: '+nextBaseDi(o.omr)+'</button></div>':'')+
+    '<label>Lägg till enhet att programmera</label><div class="addrow" id="addRow">'+CTYPES.map(c=>'<div class="addchip" data-t="'+c.t+'">+ '+c.t+'</div>').join("")+'</div>'+
+    '<div id="compList"></div>'+
+    '<button class="btn ghost" id="extraDoor" style="width:100%;margin-top:12px;font-size:13.5px">+ Extra dörr till samma utrymme (ny bas-Dörr-id)</button>'+
+    '<label style="margin-top:18px">Tillbehör &amp; passage</label><div class="chips" id="rTogs">'+TOGS.map(t=>'<div class="tog '+(draft[t[0]]?'on':'')+'" data-t="'+t[0]+'"><span class="box">'+(draft[t[0]]?'✓':'')+'</span>'+t[1]+'</div>').join("")+'</div>'+
+    '<input id="rTillFri" style="margin-top:9px" placeholder="Tillbehör – fritext" value="'+esc(draft.tillbeharFri)+'">'+
+    '<label style="margin-top:18px">Foto (max 2)</label><div id="photoWrap" class="addrow"></div><input type="file" id="photoInput" accept="image/*" capture="environment" hidden>'+
+    '<div class="grid g2" style="margin-top:14px"><div class="field"><label>Inventerare</label><input id="rInv" value="'+esc(draft.inv)+'" placeholder="Ditt namn"></div><div class="field"><label>Anteckning</label><input id="rNote" value="'+esc(draft.note)+'" placeholder="—"></div></div>'+
+    '<button class="btn ghost" id="rDelete" style="width:100%;margin-top:16px;color:var(--accent-deep);border-color:#e7c3b5">Ta bort detta objekt (finns ej)</button>'+
+    '</div></div></div>'+
+    '<div class="savezone"><button class="btn ghost" id="rClear" style="flex:0 0 auto">Töm</button><button class="btn primary" id="rSave" style="flex:1">Spara &amp; nästa</button></div>';
+  showSheet();recObj=o;const S=$("sheet");renderComps();
+  S.querySelector("#rClose").onclick=closeRecord;
+  const ab=S.querySelector("#assignBase");if(ab)ab.onclick=()=>assignBase(o);
+  S.querySelectorAll("#addRow .addchip").forEach(c=>c.onclick=()=>{if(!recObj.di)assignBase(recObj);const typ=c.dataset.t,last=draft.comps[draft.comps.length-1];
+    draft.comps.push({typ,suffix:nextSuffix(draft.comps,typ),placering:last?last.placering:"",placeringFri:last?last.placeringFri:"",bmatt:""});renderComps();});
+  S.querySelectorAll("#rTogs .tog").forEach(t=>t.onclick=()=>{draft[t.dataset.t]=!draft[t.dataset.t];t.classList.toggle("on",draft[t.dataset.t]);t.querySelector(".box").textContent=draft[t.dataset.t]?"✓":"";});
+  S.querySelector("#extraDoor").onclick=()=>addExtraDoor(o);
+  S.querySelector("#rClear").onclick=()=>{draft.comps=[];renderComps();toast("Enheter tömda (ej sparat än)");};
+  S.querySelector("#rDelete").onclick=()=>{
+    if(confirm("Ta bort objektet "+(o.di||o.hyres||"")+" helt?\\n\\nAnvänd detta när dörren/utrymmet inte längre finns i verkligheten. Det försvinner ur listan och räknas inte med.")){
+      objects=objects.filter(x=>x.key!==recKey);persist();closeRecord();refreshAll();toast("Objekt borttaget");
+    }
+  };
+  S.querySelector("#rSave").onclick=saveRecord;
+  renderPhotos(o);
+  $("photoInput").onchange=async e=>{const f=e.target.files[0];if(!f)return;e.target.value="";o.photos=o.photos||[];if(o.photos.length>=2){toast("Max 2 foton");return;}
+    try{const d=await compressImage(f,1280,0.6);const id=(crypto.randomUUID?crypto.randomUUID():'p'+Date.now()+Math.random());await photoPut(id,d);o.photos.push(id);o.ts=new Date().toISOString();persist();renderPhotos(o);refreshAll();toast("Foto sparat");}catch(err){toast("Kunde inte spara foto");}};
+}
+function assignBase(o){o.di=nextBaseDi(o.omr);o.diAssigned=true;reserve(o.di);persist();const sub=$("recSub");if(sub)sub.textContent='Bas: '+o.di+' · '+(o.hyres||'');const w=$("baseWarn");if(w)w.remove();renderComps();refreshAll();toast("Bas-Dörr-id tilldelat: "+o.di);}
+function renderComps(){
+  const base=recObj?recObj.di:"";
+  const host=$("compList");if(!host)return;
+  if(!draft.comps.length){host.innerHTML='<div class="hint" style="margin-top:10px">Inga enheter än. Tryck på en typ ovan — Dörr-id sätts automatiskt (Oval -1, Postfack -2, Hänglås -3, Kortläsare/Porttelefon -5).</div>';return;}
+  host.innerHTML=draft.comps.map((c,i)=>'<div class="comp" data-i="'+i+'"><div class="top"><span class="cid">'+(base?base+'-'+c.suffix:'(bas saknas)-'+c.suffix)+'</span><span class="cty">'+c.typ+'</span><button class="rm" data-i="'+i+'">×</button></div><div class="det"><select class="cPlac" data-i="'+i+'"><option value="">Utrymme …</option>'+UTRYMMEN.map(u=>'<option '+(c.placering===u?'selected':'')+'>'+u+'</option>').join("")+'</select><input class="cB mono" data-i="'+i+'" type="number" inputmode="numeric" placeholder="B-mått" value="'+(c.bmatt||'')+'"><input class="cFri fri" data-i="'+i+'" placeholder="Placering – fritext" value="'+esc(c.placeringFri||'')+'" style="'+(c.placering==='Annat (fritext)'||c.placeringFri?'':'display:none')+'"></div></div>').join("");
+  host.querySelectorAll(".rm").forEach(b=>b.onclick=()=>{draft.comps.splice(+b.dataset.i,1);renderComps();});
+  host.querySelectorAll(".cPlac").forEach(s=>s.onchange=()=>{const i=+s.dataset.i;draft.comps[i].placering=s.value;const fri=host.querySelector('.cFri[data-i="'+i+'"]');if(s.value==='Annat (fritext)'){fri.style.display='';fri.focus();}else if(!draft.comps[i].placeringFri){fri.style.display='none';}});
+  host.querySelectorAll(".cB").forEach(inp=>inp.oninput=()=>{draft.comps[+inp.dataset.i].bmatt=inp.value.trim();});
+  host.querySelectorAll(".cFri").forEach(inp=>inp.oninput=()=>{draft.comps[+inp.dataset.i].placeringFri=inp.value;});
+}
+function collectDraft(){const S=$("sheet");draft.inv=S.querySelector("#rInv").value.trim();draft.note=S.querySelector("#rNote").value.trim();draft.tillbeharFri=S.querySelector("#rTillFri").value.trim();}
+function writeBack(o){o.components=JSON.parse(JSON.stringify(draft.comps));TKEYS.forEach(k=>o[k]=draft[k]);o.tillbeharFri=draft.tillbeharFri;o.note=draft.note;o.inv=draft.inv;o.ts=new Date().toISOString();}
+function saveRecord(){
+  const o=objects.find(x=>x.key===recKey);if(!o)return;collectDraft();writeBack(o);persist();
+  const gk=o.omr+"|"+(o.byg||"")+"|"+(o.ing||"");
+  const next=objects.find(x=>(x.omr+"|"+(x.byg||"")+"|"+(x.ing||""))===gk&&!isDone(x)&&x.key!==o.key);
+  refreshAll();
+  if(next){openRecord(next.key);toast("Sparat ✓ nästa objekt");}else{closeRecord();toast("Sparat ✓ ingången klar");}
+}
+function addExtraDoor(o){
+  collectDraft();writeBack(o);
+  const ndi=nextBaseDi(o.omr);reserve(ndi);
+  const sib={key:(crypto.randomUUID?crypto.randomUUID():'x'+Date.now()+Math.random()),di:ndi,hyres:(o.hyres||"")+"·d2",omr:o.omr,omrNamn:o.omrNamn,fast:o.fast,
+    byg:o.byg,bygN:o.bygN,ing:o.ing,ingN:o.ingN,lgh:o.lgh,benN:(o.benN||o.typ||"Objekt")+" – extra dörr",typ:o.typ,hyrtyp:o.hyrtyp||"",rumben:o.rumben||"",boa:"",loa:"",
+    components:[],trycke:false,tackbricka:false,laskista:false,ellas:false,dorrstangare:false,tillbeharFri:"",note:"Extra dörr till samma utrymme som "+(o.di||o.hyres),inv:o.inv,ts:"",source:"tillagd"};
+  const idx=objects.indexOf(o);objects.splice(idx+1,0,sib);persist();refreshAll();openRecord(sib.key);toast("Ny bas-Dörr-id: "+ndi);
+}
+let sheetShown=false;
+function showSheet(){$("ovl").classList.add("show");if(!sheetShown){sheetShown=true;try{history.pushState({sheet:1},"");}catch(e){}}}
+function hideSheet(){$("ovl").classList.remove("show");recKey=null;sheetShown=false;}
+function closeRecord(){if(sheetShown){try{history.back();}catch(e){hideSheet();}}else{hideSheet();}}
+window.addEventListener("popstate",()=>{if($("ovl").classList.contains("show"))hideSheet();});
+
+function openNewObject(){
+  const preOmr=filter.omr||"";
+  $("sheet").innerHTML='<div class="gripbar"><div class="ttl">Ny dörr / objekt<small>Skapas utanför objektlistan – märks "Tillagd"</small></div><button id="nClose">×</button></div>'+
+    '<div class="wrap" style="padding-bottom:6px"><div class="card"><div class="body">'+
+    '<div class="grid g2"><div class="field"><label>Område *</label><input id="nOmr" class="mono" list="omrlistGlobal" value="'+preOmr+'" maxlength="4" inputmode="numeric" placeholder="t.ex. 0108"><div class="hint" id="nOmrName">'+(OMRADE[preOmr]||"—")+'</div></div>'+
+    '<div class="field"><label>Lägenhet / objektnr</label><input id="nLgh" class="mono" placeholder="—"></div></div>'+
+    '<div class="grid g2" style="margin-top:12px"><div class="field"><label>Byggnad</label><input id="nByg" class="mono" placeholder="002"></div><div class="field"><label>Ingång</label><input id="nIng" class="mono" placeholder="01"></div></div>'+
+    '<div class="grid g2" style="margin-top:12px"><div class="field"><label>Benämning</label><input id="nBen" placeholder="t.ex. Cykelrum"></div><div class="field"><label>Typ</label><input id="nTyp" placeholder="t.ex. Lokal förråd"></div></div>'+
+    '<div class="hint" style="margin-top:12px">Bas-Dörr-id tilldelas automatiskt som nästa lediga för området. Lägg sedan till enheter som vanligt.</div>'+
+    '</div></div></div>'+
+    '<div class="savezone"><button class="btn primary" id="nCreate" style="flex:1">Skapa &amp; lägg till enheter</button></div>';
+  showSheet();const S=$("sheet");
+  S.querySelector("#nClose").onclick=closeRecord;
+  S.querySelector("#nOmr").addEventListener("input",e=>{S.querySelector("#nOmrName").textContent=OMRADE[e.target.value.trim()]||"okänt område";});
+  S.querySelector("#nCreate").onclick=()=>{
+    const omr=S.querySelector("#nOmr").value.trim();
+    if(!/^\d{3,4}$/.test(omr)){toast("Ange en områdeskod");return;}
+    const omr4=omr.padStart(4,"0");
+    const nd=nextBaseDi(omr4);reserve(nd);
+    const o={key:(crypto.randomUUID?crypto.randomUUID():'x'+Date.now()+Math.random()),di:nd,hyres:"",omr:omr4,omrNamn:OMRADE[omr4]||"",fast:"",
+      byg:S.querySelector("#nByg").value.trim(),bygN:"",ing:S.querySelector("#nIng").value.trim(),ingN:"",lgh:S.querySelector("#nLgh").value.trim(),
+      benN:S.querySelector("#nBen").value.trim(),typ:S.querySelector("#nTyp").value.trim(),hyrtyp:"",rumben:S.querySelector("#nTyp").value.trim(),boa:"",loa:"",
+      components:[],trycke:false,tackbricka:false,laskista:false,ellas:false,dorrstangare:false,tillbeharFri:"",note:"",inv:"",ts:"",source:"tillagd"};
+    objects.push(o);persist();refreshAll();openRecord(o.key);toast("Nytt objekt · "+o.di);
+  };
+}
+
+function renderOverview(){
+  const tot=objects.length,done=objects.filter(isDone).length,comp=objects.reduce((s,o)=>s+(o.components?o.components.length:0),0);
+  $("kTot").textContent=tot;$("kDone").textContent=done;$("kComp").textContent=comp;
+  $("hdPct").textContent=tot?Math.round(done/tot*100)+"%":"0%";$("hdSub").textContent=done+" / "+tot;
+  const byO={};objects.forEach(o=>{const v=byO[o.omr]=byO[o.omr]||{tot:0,done:0};v.tot++;if(isDone(o))v.done++;});
+  const rows=Object.entries(byO).sort();
+  $("coverage").innerHTML=rows.length?rows.map(e=>{const o=e[0],v=e[1],p=Math.round(v.done/v.tot*100);
+    return '<div class="covrow"><div class="nm">'+o+'<small>'+(OMRADE[o]||"")+'</small></div><div class="bar"><i style="width:'+p+'%"></i></div><div class="pct">'+v.done+'/'+v.tot+'</div></div>';}).join(""):'<div class="hint">Importera en objektlista.</div>';
+}
+
+function dl(name,text,type){const b=new Blob([text],{type:type||"text/csv;charset=utf-8"});const u=URL.createObjectURL(b);const a=document.createElement("a");a.href=u;a.download=name;a.click();URL.revokeObjectURL(u);}
+function cc(v){v=(v==null?"":String(v));return /[;"\n]/.test(v)?'"'+v.replace(/"/g,'""')+'"':v;}
+function esc(s){return String(s==null?"":s).replace(/"/g,"&quot;");}
+function stamp(){return new Date().toISOString().slice(0,16).replace(/[:T]/g,"-");}
+function tillbStr(o){return TOGS.filter(t=>o[t[0]]).map(t=>t[1]).concat(o.tillbeharFri||[]).filter(Boolean).join(", ");}
+function fillBygIng(){
+  const omr=$("eOmr").value.trim().padStart(4,"0");
+  const set=new Set();objects.forEach(o=>{if(o.omr===omr)set.add((o.byg||"")+"|"+(o.ing||""));});
+  const opts=[...set].sort();
+  $("eBygIng").innerHTML='<option value="">— hela området —</option>'+opts.map(bi=>{const p=bi.split("|");return '<option value="'+bi+'">Byggnad '+(p[0]||'?')+(p[1]?(' · ing '+p[1]):'')+'</option>';}).join("");
+}
+function renderEquip(){
+  const host=$("equipList");if(!host)return;
+  if(!equip.length){host.innerHTML='<div class="empty">Ingen utrustning registrerad än.</div>';return;}
+  const g={};equip.forEach(e=>{const k=e.omr+"|"+(e.byg||"")+"|"+(e.ing||"");(g[k]=g[k]||{omr:e.omr,byg:e.byg,ing:e.ing,items:[]}).items.push(e);});
+  const arr=Object.values(g).sort((a,b)=>(a.omr+(a.byg||"")+(a.ing||"")).localeCompare(b.omr+(b.byg||"")+(b.ing||""),'sv'));
+  host.innerHTML=arr.map(gr=>{const tot=gr.items.reduce((s,e)=>s+(+e.antal||0),0);const ttl=gr.byg?('Byggnad '+gr.byg+(gr.ing?(' · ing '+gr.ing):'')):'Hela området';
+    return '<div class="bgroup open"><div class="bgh"><div class="t">'+ttl+'<small>'+gr.omr+' · '+(OMRADE[gr.omr]||'')+' · '+tot+' st</small></div></div><div class="objs">'+gr.items.map(e=>'<div class="obj" style="cursor:default"><div class="oi"><div class="a">'+esc(e.ben)+'</div></div><span class="di">×'+(e.antal||1)+'</span><button class="rm" data-k="'+e.key+'" style="background:none;border:none;font-size:20px;color:var(--muted);cursor:pointer;margin-left:6px">×</button></div>').join('')+'</div></div>';}).join("");
+  host.querySelectorAll(".rm").forEach(b=>b.onclick=()=>{equip=equip.filter(x=>x.key!==b.dataset.k);saveEquip();renderEquip();toast("Borttaget");});
+}
+function addEquip(){
+  const omr=$("eOmr").value.trim().padStart(4,"0");
+  if(!/^\d{4}$/.test(omr)){toast("Ange områdeskod");return;}
+  const ben=$("eBen").value.trim();if(!ben){toast("Ange benämning");return;}
+  const antal=Math.max(1,parseInt($("eAnt").value,10)||1);
+  const bi=($("eBygIng").value||"").split("|");
+  equip.push({key:(crypto.randomUUID?crypto.randomUUID():'e'+Date.now()+Math.random()),omr,byg:bi[0]||"",ing:bi[1]||"",ben,antal,note:"",inv:"",ts:new Date().toISOString()});
+  saveEquip();$("eBen").value="";$("eAnt").value="1";renderEquip();toast("Tillagt: "+ben+" ×"+antal);
+}
+function exportEquip(){
+  const cols=["Område","Områdesnamn","Byggnad","Ingång","Benämning","Antal","Anteckning","Inventerare","Tidpunkt"];
+  const rows=equip.slice().sort((a,b)=>(a.omr+(a.byg||"")+(a.ing||"")).localeCompare(b.omr+(b.byg||"")+(b.ing||""),'sv')).map(e=>[e.omr,OMRADE[e.omr]||"",e.byg,e.ing,e.ben,e.antal,e.note,e.inv,e.ts]);
+  dl("utrustningslista_"+stamp()+".csv","\uFEFF"+[cols].concat(rows).map(r=>r.map(cc).join(";")).join("\r\n"));
+}
+let bulkGroupKey=null;
+function openBulk(gk){
+  bulkGroupKey=gk;
+  const items=objects.filter(o=>(o.omr+"|"+(o.byg||"")+"|"+(o.ing||""))===gk);
+  if(!items.length)return;
+  const g0=items[0];const title=(g0.bygN||("Byggnad "+g0.byg))+(g0.ing?(" · ing "+g0.ing):"");
+  $("sheet").innerHTML='<div class="gripbar"><div class="ttl">Massinventera<small>'+title+' · '+g0.omr+'</small></div><button id="bClose">×</button></div>'+
+    '<div class="wrap" style="padding-bottom:6px"><div class="card"><div class="body">'+
+    '<label>Enheter att lägga på alla valda</label><div class="addrow" id="bTypes">'+CTYPES.map(c=>'<div class="addchip" data-t="'+c.t+'">+ '+c.t+'</div>').join("")+'</div>'+
+    '<div class="grid g2" style="margin-top:10px"><div class="field"><label>Placering (valfritt)</label><select id="bPlac"><option value="">—</option>'+UTRYMMEN.map(u=>'<option>'+u+'</option>').join("")+'</select></div><div class="field"><label>B-mått (valfritt)</label><input id="bB" type="number" inputmode="numeric" placeholder="t.ex. 60"></div></div>'+
+    '<div class="hint" id="bSel" style="margin-top:8px"></div>'+
+    '<div style="display:flex;gap:8px;margin-top:12px"><button class="btn ghost" id="bAll" style="flex:1;font-size:13px">Alla</button><button class="btn ghost" id="bApt" style="flex:1;font-size:13px">Alla lägenheter</button><button class="btn ghost" id="bNone" style="flex:1;font-size:13px">Ingen</button></div>'+
+    '<div id="bList" style="margin-top:10px"></div>'+
+    '</div></div></div>'+
+    '<div class="savezone"><button class="btn primary" id="bApply" style="flex:1">Lägg till på valda</button></div>';
+  showSheet();
+  const picked={};items.forEach(o=>picked[o.key]=isApartment(o));
+  const types={};
+  function drawList(){$("bList").innerHTML=items.slice().sort((a,b)=>(a.lgh||a.hyres||"").localeCompare(b.lgh||b.hyres||"",'sv')).map(o=>'<div class="tog '+(picked[o.key]?'on':'')+'" data-k="'+o.key+'" style="display:flex;width:100%;margin-top:6px"><span class="box">'+(picked[o.key]?'✓':'')+'</span>'+(o.lgh?('Lgh '+o.lgh):benLabel(o))+(isApartment(o)?'':' <span style="color:var(--muted);font-size:12px;margin-left:6px">'+(o.typ||benLabel(o))+'</span>')+'</div>').join("");
+    $("bList").querySelectorAll(".tog").forEach(t=>t.onclick=()=>{picked[t.dataset.k]=!picked[t.dataset.k];drawList();updSel();});}
+  function updSel(){const n=Object.values(picked).filter(Boolean).length;const ts=Object.keys(types).filter(k=>types[k]);$("bSel").textContent=n+" objekt valda · "+(ts.length?ts.join(", "):"inga enheter valda");}
+  const S=$("sheet");
+  S.querySelector("#bClose").onclick=closeRecord;
+  S.querySelectorAll("#bTypes .addchip").forEach(c=>c.onclick=()=>{const t=c.dataset.t;types[t]=!types[t];c.style.background=types[t]?'#fdd8c2':'';updSel();});
+  S.querySelector("#bAll").onclick=()=>{items.forEach(o=>picked[o.key]=true);drawList();updSel();};
+  S.querySelector("#bApt").onclick=()=>{items.forEach(o=>picked[o.key]=isApartment(o));drawList();updSel();};
+  S.querySelector("#bNone").onclick=()=>{items.forEach(o=>picked[o.key]=false);drawList();updSel();};
+  S.querySelector("#bApply").onclick=()=>{
+    const chosen=CTYPES.map(c=>c.t).filter(t=>types[t]);
+    const sel=items.filter(o=>picked[o.key]);
+    if(!chosen.length){toast("Välj minst en enhetstyp");return;}
+    if(!sel.length){toast("Välj minst ett objekt");return;}
+    const plac=S.querySelector("#bPlac").value;const bm=S.querySelector("#bB").value.trim();
+    let nObj=0,nEnh=0;
+    sel.forEach(o=>{if(!o.di){o.di=nextBaseDi(o.omr);o.diAssigned=true;didReserved[o.di]=true;}
+      o.components=o.components||[];let changed=false;
+      chosen.forEach(t=>{if(o.components.some(c=>c.typ===t))return;o.components.push({typ:t,suffix:nextSuffix(o.components,t),placering:plac||"",placeringFri:"",bmatt:bm});nEnh++;changed=true;});
+      if(changed){o.ts=new Date().toISOString();nObj++;}});
+    saveReserved();persist();refreshAll();closeRecord();toast("La till "+nEnh+" enheter på "+nObj+" objekt");
+  };
+  drawList();updSel();
+}
+function exportProg(){
+  const cols=["Kategori","Dörr-id","Bas-Dörr-id","Suffix","Enhetstyp","Antal st","Utrymme","Utrymme fritext","B-mått","Hyresobjekt","Rumskod","Område","Områdesnamn","Byggnad","Ingång","Lägenhet","Benämning","Objekttyp","Lägenhetsstorlek","Antal nycklar","Tillbehör","Anteckning","Inventerare","Källa"];
+  const recs=[];
+  objects.forEach(o=>{const kalla=o.source==='tillagd'?'Tillagd':'Import';const kc=keyCount(o);const sz=isApartment(o)?sizeText(o):"";
+    const sk=[o.omr,o.byg||"",o.ing||"","0",(o.lgh||o.hyres||"")];
+    if(o.components&&o.components.length){o.components.forEach((c,ci)=>{recs.push({k:sk,row:["Lås/programmering",(o.di||"")+"-"+c.suffix,o.di,c.suffix,c.typ,"",c.placering,c.placeringFri,c.bmatt,o.hyres,rumskod(o),o.omr,o.omrNamn,o.byg,o.ing,o.lgh,benLabel(o),o.typ,sz,(ci===0?kc:""),tillbStr(o),o.note,o.inv,kalla]});});}
+    else{recs.push({k:sk,row:["Lås/programmering",o.di||"",o.di,"","Ej tilldelad","","","","",o.hyres,rumskod(o),o.omr,o.omrNamn,o.byg,o.ing,o.lgh,benLabel(o),o.typ,sz,kc,"","","",kalla]});}});
+  equip.forEach(e=>{recs.push({k:[e.omr,e.byg||"",e.ing||"","1",e.ben||""],row:["Utrustning","","","","",e.antal,"","","","","",e.omr,OMRADE[e.omr]||"",e.byg||"",e.ing||"","",e.ben,"","","","",e.note||"",e.inv||"",""]});});
+  recs.sort((a,b)=>a.k.join("~").localeCompare(b.k.join("~"),'sv'));
+  const rows=recs.map(r=>r.row);
+  dl("programmeringslista_"+stamp()+".csv","\uFEFF"+[cols].concat(rows).map(r=>r.map(cc).join(";")).join("\r\n"));
+}
+function exportObj(){
+  const cols=["Bas-Dörr-id","Bas-id källa","Hyresobjekt","Rumskod","Område","Områdesnamn","Fastighet","Byggnad","Byggnad benämning","Ingång","Lägenhet","Benämning","Typ","Lägenhetsstorlek","Antal nycklar","BOA","LOA","Antal enheter","Dörr-id (alla)","Tillbehör","Klar","Källa","Anteckning","Inventerare","Tidpunkt"];
+  const rows=objects.map(o=>[o.di,(o.di?(o.diAssigned?"Tilldelad i app":"Från lista"):"SAKNAS"),o.hyres,rumskod(o),o.omr,o.omrNamn,o.fast,o.byg,o.bygN,o.ing,o.lgh,benLabel(o),o.typ,(isApartment(o)?sizeText(o):""),keyCount(o),o.boa,o.loa,(o.components||[]).length,(o.components||[]).map(c=>(o.di||"")+"-"+c.suffix).join(" | "),tillbStr(o),isDone(o)?"Ja":"Nej",(o.source==='tillagd'?'Tillagd':'Import'),o.note,o.inv,o.ts]);
+  dl("objektlista_status_"+stamp()+".csv","\uFEFF"+[cols].concat(rows).map(r=>r.map(cc).join(";")).join("\r\n"));
+}
+
+function backupBundle(){return JSON.stringify({v:3,exported:new Date().toISOString(),objects,didReserved,didPool,equip});}
+async function shareBackup(){
+  const data=backupBundle(),fname="certego_inventering_backup_"+stamp()+".json";
+  try{if(navigator.canShare){const f=new File([data],fname,{type:"application/json"});if(navigator.canShare({files:[f]})){await navigator.share({files:[f],title:"Certego inventering backup"});return;}}}catch(e){}
+  dl(fname,data,"application/json");
+}
+function mergeData(text){
+  let inc;try{inc=JSON.parse(text);}catch(e){toast("Ogiltig fil");return;}
+  let objsIn=[],resIn={},poolIn={},equipIn=[];
+  if(Array.isArray(inc))objsIn=inc;else{objsIn=inc.objects||[];resIn=inc.didReserved||{};poolIn=inc.didPool||{};equipIn=inc.equip||[];}
+  const byKey={};objects.forEach(o=>byKey[o.key]=o);
+  let added=0,updated=0;
+  objsIn.forEach(io=>{const ex=byKey[io.key];
+    if(!ex){objects.push(io);byKey[io.key]=io;added++;}
+    else if((io.ts||"")>(ex.ts||"")){Object.assign(ex,io);updated++;}});
+  const eByKey={};equip.forEach(e=>eByKey[e.key]=e);
+  equipIn.forEach(ie=>{if(!ie.key)return;const ex=eByKey[ie.key];if(!ex){equip.push(ie);eByKey[ie.key]=ie;}else if((ie.ts||"")>(ex.ts||"")){Object.assign(ex,ie);}});
+  Object.keys(resIn).forEach(id=>{didReserved[id]=true;});
+  objects.forEach(o=>{if(o.di)didReserved[o.di]=true;});
+  Object.keys(poolIn).forEach(k=>{didPool[k]=[...new Set((didPool[k]||[]).concat(poolIn[k]))];});
+  savePool();saveReserved();saveEquip();persist();refreshAll();
+  toast("Sammanslaget: "+added+" nya, "+updated+" uppdaterade");
+}
+function fmt(iso){if(!iso)return "aldrig";try{return new Date(iso).toLocaleString('sv-SE',{year:'numeric',month:'2-digit',day:'2-digit',hour:'2-digit',minute:'2-digit'});}catch(e){return iso;}}
+async function syncNow(){
+  const base=(serverUrl||"").replace(/\/+$/,"");
+  $("syncStatus").textContent="Synkar …";
+  try{
+    const res=await fetch(base+"/api/sync",{method:"POST",headers:{"Content-Type":"application/json"},body:backupBundle()});
+    if(!res.ok)throw new Error("HTTP "+res.status);
+    const merged=await res.json();
+    objects=merged.objects||[];didPool=merged.didPool||{};didReserved=merged.didReserved||{};equip=merged.equip||[];
+    persist();savePool();saveReserved();saveEquip();
+    lastSync=new Date().toISOString();store.set("uh_lastsync",lastSync);
+    refreshAll();
+    try{
+      const localKeys=new Set(await photoKeys());
+      const srv=await fetch(base+"/api/photos").then(r=>r.json()).catch(()=>({ids:[]}));
+      const srvIds=new Set(srv.ids||[]);
+      const refIds=new Set();objects.forEach(o=>(o.photos||[]).forEach(id=>refIds.add(id)));
+      for(const id of refIds){if(localKeys.has(id)&&!srvIds.has(id)){const d=await photoGet(id);if(d){await fetch(base+"/api/photo",{method:"POST",headers:{"Content-Type":"application/json"},body:JSON.stringify({id,data:d})}).catch(()=>{});}}}
+      for(const id of refIds){if(!localKeys.has(id)&&srvIds.has(id)){const bl=await fetch(base+"/api/photo/"+id).then(r=>r.ok?r.blob():null).catch(()=>null);if(bl){const du=await blobToDataURL(bl);if(du)await photoPut(id,du);}}}
+    }catch(e){}
+    toast("Synkad mot server ✓");
+    $("syncStatus").textContent="Senaste synk: "+fmt(lastSync);
+  }catch(e){toast("Ingen kontakt med servern");$("syncStatus").textContent="Synk misslyckades. Senaste lyckade: "+fmt(lastSync);}
+}
+function refreshAll(){omrOptions();renderBrowse();renderOverview();renderEquip();
+  const pn=Object.keys(didPool).length,pc=Object.values(didPool).reduce((s,a)=>s+a.length,0);
+  const ps=$("poolStatus");if(ps)ps.innerHTML=pn?('✓ Dörr-id-lista inläst: <b>'+pn+'</b> områden, <b>'+pc+'</b> id:n. Tilldelning drar nästa lediga ur listan och reserverar det.'):'Dörr-id-lista ej inläst — tilldelning sker som högsta använda + 1. Importera bladet "DörrID och Område" för exakt tilldelning ur den genererade listan.';
+}
+function toast(m){const t=$("toast");t.textContent=m;t.classList.add("show");setTimeout(()=>t.classList.remove("show"),1700);}
+function init(){
+  document.querySelectorAll("nav button").forEach(b=>b.onclick=()=>{document.querySelectorAll("nav button").forEach(x=>x.classList.toggle("on",x===b));document.querySelectorAll(".view").forEach(v=>v.classList.toggle("on",v.id===b.dataset.v));window.scrollTo({top:0});});
+  $("fOmr").onchange=e=>{filter.omr=e.target.value;renderBrowse();};
+  $("fStat").onchange=e=>{filter.stat=e.target.value;renderBrowse();};
+  const drop=$("drop"),file=$("file");drop.onclick=()=>file.click();file.onchange=e=>{if(e.target.files[0])handleFile(e.target.files[0]);};
+  ["dragover","dragenter"].forEach(ev=>drop.addEventListener(ev,e=>{e.preventDefault();drop.classList.add("hot");}));
+  ["dragleave","drop"].forEach(ev=>drop.addEventListener(ev,e=>{e.preventDefault();drop.classList.remove("hot");}));
+  drop.addEventListener("drop",e=>{if(e.dataTransfer.files[0])handleFile(e.dataTransfer.files[0]);});
+  $("impGo").onclick=()=>{if(!parsedWb){toast("Välj en fil först");return;}if(!Object.values(pickedSheets).some(Boolean)){toast("Markera minst ett blad");return;}importSheets();};
+  $("expCsv").onclick=exportProg;$("expObj").onclick=exportObj;$("expEquip").onclick=exportEquip;
+  $("eChips").innerHTML=EQUIP.map(x=>'<div class="addchip" data-b="'+x+'">'+x+'</div>').join("");
+  $("eChips").querySelectorAll(".addchip").forEach(c=>c.onclick=()=>{$("eBen").value=c.dataset.b;$("eAnt").focus();});
+  $("eOmr").addEventListener("input",e=>{$("eOmrName").textContent=OMRADE[e.target.value.trim().padStart(4,"0")]||"okänt område";fillBygIng();});
+  $("eAdd").onclick=addEquip;
+  $("expJson").onclick=shareBackup;
+  $("mergeBtn").onclick=()=>$("mergeFile").click();
+  $("mergeFile").onchange=e=>{const f=e.target.files[0];if(!f)return;const rd=new FileReader();rd.onload=ev=>{mergeData(ev.target.result);e.target.value="";};rd.readAsText(f);};
+  $("clr").onclick=()=>{if(confirm("Radera ALLA "+objects.length+" objekt? Exportera först."))(objects=[],persist(),refreshAll(),toast("Allt rensat"));};
+  $("ovl").onclick=e=>{if(e.target.id==="ovl")closeRecord();};
+  $("fabNew").onclick=openNewObject;
+  $("omrlistGlobal").innerHTML=Object.keys(OMRADE).map(k=>'<option value="'+k+'">'+k+' · '+OMRADE[k]+'</option>').join("");
+  $("srvUrl").value=serverUrl;
+  $("srvUrl").onchange=e=>{serverUrl=e.target.value.trim();store.set("uh_server",serverUrl);};
+  $("syncBtn").onclick=syncNow;
+  $("syncStatus").textContent="Senaste synk: "+fmt(lastSync);
+  refreshAll();
+}
+load().then(init);
+if('serviceWorker' in navigator){window.addEventListener('load',()=>navigator.serviceWorker.register('sw.js').catch(()=>{}));}
+</script>
