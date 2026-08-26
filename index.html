@@ -191,6 +191,17 @@ details.cov-details[open]>summary::after{transform:rotate(90deg)}
       <button class="btn primary" id="syncBtn" style="margin-top:12px">Synka mot server</button>
       <div class="hint" id="syncStatus" style="margin-top:10px"></div>
     </div></div>
+    <h2 class="sec">Exportera per område</h2>
+    <div class="card"><div class="body">
+      <label>Område</label>
+      <select id="expOmr"><option value="">Alla områden</option></select>
+      <div class="tools" style="margin-top:12px">
+        <button id="expProgO">Programmeringslista</button>
+        <button id="expObjO">Objektlista</button>
+        <button id="expMatO">Utrustning &amp; artiklar</button>
+      </div>
+      <div class="hint" style="margin-top:8px">Väljer du ett område exporteras bara det området.</div>
+    </div></div>
     <h2 class="sec">Foton per område</h2>
     <div class="card"><div class="body">
       <label>Område</label>
@@ -205,8 +216,7 @@ details.cov-details[open]>summary::after{transform:rotate(90deg)}
     <div class="tools">
       <button id="expCsv">Exportera programmeringslista</button>
       <button id="expObj">Exportera objektlista</button>
-      <button id="expEquip">Exportera utrustning</button>
-      <button id="expArt">Exportera artikellista</button>
+      <button id="expMat">Exportera utrustning &amp; artiklar</button>
       <button id="expJson">Dela / spara backup</button>
       <button id="mergeBtn">Slå ihop backup</button>
       <button id="clr" class="danger">Rensa lokalt</button>
@@ -492,7 +502,10 @@ function hideSheet(){$("ovl").classList.remove("show");recKey=null;sheetShown=fa
 function closeRecord(){if(sheetShown){try{history.back();}catch(e){hideSheet();}}else{hideSheet();}}
 window.addEventListener("popstate",()=>{if($("ovl").classList.contains("show"))hideSheet();});
 
-function genHyresId(omr,byg,ing,ben){const b3=String(byg||"").trim().padStart(3,"0");const i2=String(ing||"").trim().padStart(2,"0");const pre=((String(ben||"").trim().charAt(0))||"X").toUpperCase();const base=omr+"-"+b3+"-"+i2+"-"+pre;let n=0;objects.forEach(o=>{if(typeof o.hyres==="string"&&o.hyres.indexOf(base)===0){const rest=o.hyres.slice(base.length);if(/^\d+$/.test(rest))n=Math.max(n,parseInt(rest,10));}});return base+(n+1);}
+function rowHead(o){return (o.source==='tillagd'&&o.benN)?(esc(o.benN)+' '+(o.lgh||'')):(o.lgh?('Lgh '+o.lgh):benLabel(o));}
+const BENCODE=[["entré","E"],["entre","E"],["cykelförråd","CF"],["cykel","C"],["miljö","M"],["soprum","SR"],["elcentral","EL"],["undercentral","U"],["elrum","EL"],["barnvagn","BV"],["lägenhetsförråd","LF"],["fastighetsförråd","FF"],["vindsförråd","VF"],["förråd","F"],["trapphus","T"],["tvätt","TV"],["källardörr","KD"],["källar","K"],["korridor","KO"],["gallerbur","GB"],["garage","G"],["teknik","TK"],["fläktrum","FL"],["gemensam","GE"],["pentry","P"],["skyddsrum","SK"],["hissmaskin","HM"],["städ","ST"],["kontor","KN"],["gym","GY"],["förening","FÖ"],["sjukvård","SJ"],["lokal","LO"]];
+function benCode(ben){const n=(ben||"").toLowerCase();for(let i=0;i<BENCODE.length;i++){if(n.indexOf(BENCODE[i][0])>=0)return BENCODE[i][1];}return ((n.replace(/[^a-zåäö]/g,"")[0])||"X").toUpperCase();}
+function genHyresId(omr,byg,ing,ben){const b3=String(byg||"").trim().padStart(3,"0");const i2=String(ing||"").trim().padStart(2,"0");const pre=benCode(ben);const base=omr+"-"+b3+"-"+i2+"-"+pre;let n=0;objects.forEach(o=>{if(typeof o.hyres==="string"&&o.hyres.indexOf(base)===0){const rest=o.hyres.slice(base.length);if(/^\d+$/.test(rest))n=Math.max(n,parseInt(rest,10));}});return base+(n+1);}
 function openNewObject(){
   const preOmr=(activeGroup&&activeGroup.omr)||filter.omr||"";const preByg=(activeGroup&&activeGroup.byg)||"";const preIng=(activeGroup&&activeGroup.ing)||"";const inGroup=!!activeGroup;
   $("sheet").innerHTML='<div class="gripbar"><div class="ttl">'+(inGroup?"Ny dörr · Byggnad "+preByg+" · ing "+preIng:"Ny dörr / objekt")+'<small>'+(inGroup?"Skriv bara benämning – övrigt ifyllt":"Skapas utanför objektlistan – märks Tillagd")+'</small></div><button id="nClose">×</button></div>'+
@@ -534,6 +547,7 @@ function renderOverview(){
   $("coverage").innerHTML=rows.length?rows.map(e=>{const o=e[0],v=e[1],p=Math.round(v.done/v.tot*100);
     return '<div class="covrow"><div class="nm">'+o+'<small>'+(OMRADE[o]||"")+'</small></div><div class="bar"><i style="width:'+p+'%"></i></div><div class="pct">'+v.done+'/'+v.tot+'</div></div>';}).join(""):'<div class="hint">Importera en objektlista.</div>';
   const cs=$("covSum");if(cs)cs.textContent=rows.length?("· "+rows.length+" områden"):"";
+  const eo=$("expOmr");if(eo){const cur=eo.value;eo.innerHTML='<option value="">Alla områden</option>'+rows.map(e=>'<option value="'+e[0]+'">'+e[0]+' · '+(OMRADE[e[0]]||"")+'</option>').join("");if(cur)eo.value=cur;}
 }
 
 function dl(name,text,type){const b=new Blob([text],{type:type||"text/csv;charset=utf-8"});const u=URL.createObjectURL(b);const a=document.createElement("a");a.href=u;a.download=name;a.click();URL.revokeObjectURL(u);}
@@ -588,7 +602,7 @@ function openBulk(gk){
   showSheet();
   const picked={};items.forEach(o=>picked[o.key]=isApartment(o));
   const types={};
-  function drawList(){$("bList").innerHTML=items.slice().sort((a,b)=>(a.lgh||a.hyres||"").localeCompare(b.lgh||b.hyres||"",'sv')).map(o=>'<div class="tog '+(picked[o.key]?'on':'')+'" data-k="'+o.key+'" style="display:flex;width:100%;margin-top:6px"><span class="box">'+(picked[o.key]?'✓':'')+'</span>'+(o.lgh?('Lgh '+o.lgh):benLabel(o))+(isApartment(o)?'':' <span style="color:var(--muted);font-size:12px;margin-left:6px">'+(o.typ||benLabel(o))+'</span>')+'</div>').join("");
+  function drawList(){$("bList").innerHTML=items.slice().sort((a,b)=>(a.lgh||a.hyres||"").localeCompare(b.lgh||b.hyres||"",'sv')).map(o=>'<div class="tog '+(picked[o.key]?'on':'')+'" data-k="'+o.key+'" style="display:flex;width:100%;margin-top:6px"><span class="box">'+(picked[o.key]?'✓':'')+'</span>'+rowHead(o)+(isApartment(o)?'':' <span style="color:var(--muted);font-size:12px;margin-left:6px">'+(o.typ||benLabel(o))+'</span>')+'</div>').join("");
     $("bList").querySelectorAll(".tog").forEach(t=>t.onclick=()=>{picked[t.dataset.k]=!picked[t.dataset.k];drawList();updSel();});}
   function updSel(){const n=Object.values(picked).filter(Boolean).length;const ts=Object.keys(types).filter(k=>types[k]);$("bSel").textContent=n+" objekt valda · "+(ts.length?ts.join(", "):"inga enheter valda");}
   const S=$("sheet");
@@ -612,17 +626,17 @@ function openBulk(gk){
   };
   drawList();updSel();
 }
-function exportProg(){
+function exportProg(omrF){
   const cols=["Kategori","Dörr-id","Bas-Dörr-id","Suffix","Enhetstyp","Antal st","Utrymme","Utrymme fritext","B-mått","Hyresobjekt","Rumskod","Område","Områdesnamn","Byggnad","Ingång","Lägenhet","Benämning","Objekttyp","Lägenhetsstorlek","Antal nycklar","Tillbehör","Anteckning","Inventerare","Källa"];
   const recs=[];
-  objects.forEach(o=>{const kalla=o.source==='tillagd'?'Tillagd':'Import';const kc=keyCount(o);const sz=isApartment(o)?sizeText(o):"";
+  (omrF?objects.filter(o=>o.omr===omrF):objects).forEach(o=>{const kalla=o.source==='tillagd'?'Tillagd':'Import';const kc=keyCount(o);const sz=isApartment(o)?sizeText(o):"";
     const sk=[o.omr,o.byg||"",o.ing||"","0",(o.lgh||o.hyres||"")];
     if(o.components&&o.components.length){o.components.forEach((c,ci)=>{recs.push({k:sk,row:["Lås/programmering",(o.di||"")+"-"+c.suffix,o.di,c.suffix,c.typ,"",c.placering,c.placeringFri,c.bmatt,o.hyres,rumskod(o),o.omr,o.omrNamn,o.byg,o.ing,o.lgh,benLabel(o),o.typ,sz,(ci===0?kc:""),tillbStr(o),o.note,o.inv,kalla]});});}
     else{recs.push({k:sk,row:["Lås/programmering",o.di||"",o.di,"","Ej tilldelad","","","","",o.hyres,rumskod(o),o.omr,o.omrNamn,o.byg,o.ing,o.lgh,benLabel(o),o.typ,sz,kc,"","","",kalla]});}});
-  equip.forEach(e=>{recs.push({k:[e.omr,e.byg||"",e.ing||"","1",e.ben||""],row:["Utrustning","","","","",e.antal,"","","","","",e.omr,OMRADE[e.omr]||"",e.byg||"",e.ing||"","",e.ben,"","","","",e.note||"",e.inv||"",""]});});
+  (omrF?equip.filter(e=>e.omr===omrF):equip).forEach(e=>{recs.push({k:[e.omr,e.byg||"",e.ing||"","1",e.ben||""],row:["Utrustning","","","","",e.antal,"","","","","",e.omr,OMRADE[e.omr]||"",e.byg||"",e.ing||"","",e.ben,"","","","",e.note||"",e.inv||"",""]});});
   recs.sort((a,b)=>a.k.join("~").localeCompare(b.k.join("~"),'sv'));
   const rows=recs.map(r=>r.row);
-  dl("programmeringslista_"+stamp()+".csv","\uFEFF"+[cols].concat(rows).map(r=>r.map(cc).join(";")).join("\r\n"));
+  dl("programmeringslista_"+(omrF?omrF+"_":"")+stamp()+".csv","\uFEFF"+[cols].concat(rows).map(r=>r.map(cc).join(";")).join("\r\n"));
 }
 function exportArtiklar(){
   const accs=[["trycke","Trycke"],["tackbricka","Täckbricka"],["laskista","Låskista"],["ellas","El-lås"],["dorrstangare","Dörrstängare"]];
@@ -638,12 +652,29 @@ function exportArtiklar(){
   if(!rows.length){toast("Inga enheter att summera än");return;}
   dl("artikellista_"+stamp()+".csv","\uFEFF"+[cols].concat(rows).map(r=>r.map(cc).join(";")).join("\r\n"));
 }
-function exportObj(){
+function exportObj(omrF){
   const cols=["Bas-Dörr-id","Bas-id källa","Hyresobjekt","Rumskod","Område","Områdesnamn","Fastighet","Byggnad","Byggnad benämning","Ingång","Lägenhet","Benämning","Typ","Lägenhetsstorlek","Antal nycklar","BOA","LOA","Antal enheter","Dörr-id (alla)","Tillbehör","Klar","Källa","Anteckning","Inventerare","Tidpunkt"];
-  const rows=objects.map(o=>[o.di,(o.di?(o.diAssigned?"Tilldelad i app":"Från lista"):"SAKNAS"),o.hyres,rumskod(o),o.omr,o.omrNamn,o.fast,o.byg,o.bygN,o.ing,o.lgh,benLabel(o),o.typ,(isApartment(o)?sizeText(o):""),keyCount(o),o.boa,o.loa,(o.components||[]).length,(o.components||[]).map(c=>(o.di||"")+"-"+c.suffix).join(" | "),tillbStr(o),isDone(o)?"Ja":"Nej",(o.source==='tillagd'?'Tillagd':'Import'),o.note,o.inv,o.ts]);
-  dl("objektlista_status_"+stamp()+".csv","\uFEFF"+[cols].concat(rows).map(r=>r.map(cc).join(";")).join("\r\n"));
+  const rows=(omrF?objects.filter(o=>o.omr===omrF):objects).map(o=>[o.di,(o.di?(o.diAssigned?"Tilldelad i app":"Från lista"):"SAKNAS"),o.hyres,rumskod(o),o.omr,o.omrNamn,o.fast,o.byg,o.bygN,o.ing,o.lgh,benLabel(o),o.typ,(isApartment(o)?sizeText(o):""),keyCount(o),o.boa,o.loa,(o.components||[]).length,(o.components||[]).map(c=>(o.di||"")+"-"+c.suffix).join(" | "),tillbStr(o),isDone(o)?"Ja":"Nej",(o.source==='tillagd'?'Tillagd':'Import'),o.note,o.inv,o.ts]);
+  dl("objektlista_status_"+(omrF?omrF+"_":"")+stamp()+".csv","\uFEFF"+[cols].concat(rows).map(r=>r.map(cc).join(";")).join("\r\n"));
 }
 
+function exportMaterial(omrF){
+  const objs=omrF?objects.filter(o=>o.omr===omrF):objects;
+  const eq=omrF?equip.filter(e=>e.omr===omrF):equip;
+  const accs=[["trycke","Trycke"],["tackbricka","Täckbricka"],["laskista","Låskista"],["ellas","El-lås"],["dorrstangare","Dörrstängare"]];
+  const tally={},totals={};
+  const bump=(omr,art,n)=>{(tally[omr]=tally[omr]||{})[art]=(tally[omr][art]||0)+(n||1);totals[art]=(totals[art]||0)+(n||1);};
+  objs.forEach(o=>{const omr=o.omr||"";(o.components||[]).forEach(c=>bump(omr,c.typ,1));accs.forEach(([k,label])=>{if(o[k])bump(omr,label,1);});});
+  const artOrder=CTYPES.map(c=>c.t).concat(accs.map(a=>a[1]));
+  const ordered=t=>artOrder.filter(a=>t[a]).concat(Object.keys(t).filter(a=>!artOrder.includes(a)));
+  const cols=["Typ","Område","Områdesnamn","Byggnad","Ingång","Artikel/Utrustning","Antal","Anteckning"];const rows=[];
+  Object.keys(tally).sort().forEach(omr=>{ordered(tally[omr]).forEach(art=>rows.push(["Artikel",omr,OMRADE[omr]||"","","",art,tally[omr][art],""]));});
+  ordered(totals).forEach(art=>rows.push(["Artikel TOTALT","","","","",art,totals[art],""]));
+  if(eq.length)rows.push([]);
+  eq.slice().sort((a,b)=>(a.omr+(a.byg||"")+(a.ing||"")).localeCompare(b.omr+(b.byg||"")+(b.ing||""),'sv')).forEach(e=>rows.push(["Utrustning",e.omr,OMRADE[e.omr]||"",e.byg||"",e.ing||"",e.ben,e.antal,e.note||""]));
+  if(!rows.length){toast("Inget att exportera");return;}
+  dl("material_"+(omrF?omrF+"_":"")+stamp()+".csv","\uFEFF"+[cols].concat(rows).map(r=>r.map(cc).join(";")).join("\r\n"));
+}
 function backupBundle(){return JSON.stringify({v:3,exported:new Date().toISOString(),objects,didReserved,didPool,equip});}
 async function shareBackup(){
   const data=backupBundle(),fname="certego_inventering_backup_"+stamp()+".json";
@@ -723,7 +754,8 @@ function init(){
   ["dragleave","drop"].forEach(ev=>drop.addEventListener(ev,e=>{e.preventDefault();drop.classList.remove("hot");}));
   drop.addEventListener("drop",e=>{if(e.dataTransfer.files[0])handleFile(e.dataTransfer.files[0]);});
   $("impGo").onclick=()=>{if(!parsedWb){toast("Välj en fil först");return;}if(!Object.values(pickedSheets).some(Boolean)){toast("Markera minst ett blad");return;}importSheets();};
-  $("expCsv").onclick=exportProg;$("expObj").onclick=exportObj;$("expEquip").onclick=exportEquip;$("expArt").onclick=exportArtiklar;
+  $("expCsv").onclick=()=>exportProg("");$("expObj").onclick=()=>exportObj("");if($("expMat"))$("expMat").onclick=()=>exportMaterial("");
+  if($("expProgO")){$("expProgO").onclick=()=>exportProg($("expOmr").value);$("expObjO").onclick=()=>exportObj($("expOmr").value);$("expMatO").onclick=()=>exportMaterial($("expOmr").value);}
   $("eChips").innerHTML=EQUIP.map(x=>'<div class="addchip" data-b="'+x+'">'+x+'</div>').join("");
   $("eChips").querySelectorAll(".addchip").forEach(c=>c.onclick=()=>{$("eBen").value=c.dataset.b;$("eAnt").focus();});
   $("eOmr").addEventListener("input",e=>{$("eOmrName").textContent=OMRADE[e.target.value.trim().padStart(4,"0")]||"okänt område";fillBygIng();});
