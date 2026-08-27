@@ -176,15 +176,21 @@ def api_photo_get(pid):
 
 
 def photo_map():
-    """photoid -> (omr, di, index) från lagrad bundle."""
+    """photoid -> (omr, filnamnsbas). Objekt: di-index. Utrustning: omr-löpnr."""
     b = load_bundle()
     mp = {}
     for o in b.get("objects", []):
         omr = (o.get("omr") or "").strip()
         di = (o.get("di") or o.get("key") or "").strip()
-        photos = o.get("photos") or []
-        for i, pid in enumerate(photos):
-            mp[safe_id(pid)] = (omr, di, i + 1)
+        for i, pid in enumerate(o.get("photos") or []):
+            base = di if di else safe_id(pid)
+            mp[safe_id(pid)] = (omr, "%s-%d" % (base, i + 1))
+    seq = {}
+    for e in b.get("equip", []):
+        omr = (e.get("omr") or "").strip()
+        for pid in (e.get("photos") or []):
+            seq[omr] = seq.get(omr, 0) + 1
+            mp[safe_id(pid)] = (omr, "%s-%d" % (omr, seq[omr]))
     return mp
 
 
@@ -194,7 +200,7 @@ def api_photos_areas():
     counts = {}
     if os.path.isdir(PHOTODIR):
         have = {f[:-4] for f in os.listdir(PHOTODIR) if f.endswith(".jpg")}
-        for pid, (omr, di, idx) in mp.items():
+        for pid, (omr, base) in mp.items():
             if pid in have and omr:
                 counts[omr] = counts.get(omr, 0) + 1
     return cors(jsonify({"areas": counts}))
@@ -215,13 +221,10 @@ def api_photos_export():
                 info = mp.get(pid)
                 if not info:
                     continue
-                fomr, di, idx = info
+                fomr, base = info
                 if omr and fomr != omr:
                     continue
-                # namnge efter Dörr-id (DIxxxx-1.jpg), unikt suffix om flera
-                base = di if di else pid
-                name = "%s-%d.jpg" % (base, idx)
-                z.write(os.path.join(PHOTODIR, f), name)
+                z.write(os.path.join(PHOTODIR, f), base + ".jpg")
                 n += 1
     buf.seek(0)
     fn = "foton_%s.zip" % (omr or "alla")
@@ -242,7 +245,7 @@ def api_photos_clear():
     mp = photo_map()
     n = 0
     if os.path.isdir(PHOTODIR):
-        for pid, (fomr, di, idx) in mp.items():
+        for pid, (fomr, base) in mp.items():
             if fomr == omr:
                 p = os.path.join(PHOTODIR, pid + ".jpg")
                 if os.path.exists(p):

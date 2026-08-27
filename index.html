@@ -154,6 +154,7 @@ details.cov-details[open]>summary::after{transform:rotate(90deg)}
       <div class="grid g2" style="margin-top:9px;align-items:end">
         <div class="field"><label>Antal</label><input id="eAnt" type="number" inputmode="numeric" value="1" min="1"></div>
         <div class="field"><button class="btn primary" id="eAdd">Lägg till</button></div>
+        <input type="file" id="eqPhotoInput" accept="image/*" capture="environment" hidden>
       </div>
     </div></div>
     <h2 class="sec">Registrerad utrustning</h2>
@@ -249,7 +250,7 @@ const EQUIP=["Centralapparat","Styra 3000","Styra komkort 4000","Dörrbox","Likr
 
 let objects=[];let filter={omr:"",stat:""};let openGroups={};let activeGroup=null;let parsedWb=null,pickedSheets={};
 let didPool={};let didReserved={};
-let serverUrl="";let lastSync="";let equip=[];
+let serverUrl="";let lastSync="";let equip=[];let eqPhotoTarget=null;
 const $=id=>document.getElementById(id);
 
 const KVDB="certego_kv";
@@ -567,8 +568,10 @@ function renderEquip(){
   const g={};equip.forEach(e=>{const k=e.omr+"|"+(e.byg||"")+"|"+(e.ing||"");(g[k]=g[k]||{omr:e.omr,byg:e.byg,ing:e.ing,items:[]}).items.push(e);});
   const arr=Object.values(g).sort((a,b)=>(a.omr+(a.byg||"")+(a.ing||"")).localeCompare(b.omr+(b.byg||"")+(b.ing||""),'sv'));
   host.innerHTML=arr.map(gr=>{const tot=gr.items.reduce((s,e)=>s+(+e.antal||0),0);const ttl=gr.byg?('Byggnad '+gr.byg+(gr.ing?(' · ing '+gr.ing):'')):'Hela området';
-    return '<div class="bgroup open"><div class="bgh"><div class="t">'+ttl+'<small>'+gr.omr+' · '+(OMRADE[gr.omr]||'')+' · '+tot+' st</small></div></div><div class="objs">'+gr.items.map(e=>'<div class="obj" style="cursor:default"><div class="oi"><div class="a">'+esc(e.ben)+'</div></div><span class="di">×'+(e.antal||1)+'</span><button class="rm" data-k="'+e.key+'" style="background:none;border:none;font-size:20px;color:var(--muted);cursor:pointer;margin-left:6px">×</button></div>').join('')+'</div></div>';}).join("");
+    return '<div class="bgroup open"><div class="bgh"><div class="t">'+ttl+'<small>'+gr.omr+' · '+(OMRADE[gr.omr]||'')+' · '+tot+' st</small></div></div><div class="objs">'+gr.items.map(e=>'<div class="obj" style="cursor:default;flex-wrap:wrap"><div class="oi"><div class="a">'+esc(e.ben)+((e.photos&&e.photos.length)?' <span class="badge" style="background:#e2f0e8;color:#1e7a46">📷'+e.photos.length+'</span>':'')+'</div></div><span class="di">×'+(e.antal||1)+'</span><button class="ecam" data-k="'+e.key+'" style="background:none;border:none;font-size:19px;cursor:pointer;margin-left:6px">📷</button><button class="rm" data-k="'+e.key+'" style="background:none;border:none;font-size:20px;color:var(--muted);cursor:pointer;margin-left:2px">×</button><div class="eqph" data-k="'+e.key+'" style="display:flex;gap:6px;width:100%;margin-top:6px"></div></div>').join('')+'</div></div>';}).join("");
   host.querySelectorAll(".rm").forEach(b=>b.onclick=()=>{equip=equip.filter(x=>x.key!==b.dataset.k);saveEquip();renderEquip();toast("Borttaget");});
+  host.querySelectorAll(".ecam").forEach(b=>b.onclick=()=>{eqPhotoTarget=b.dataset.k;$("eqPhotoInput").click();});
+  host.querySelectorAll(".eqph").forEach(async d=>{const it=equip.find(x=>x.key===d.dataset.k);if(!it||!it.photos||!it.photos.length)return;let html="";for(const id of it.photos){const dat=await photoGet(id);if(dat)html+='<div style="position:relative"><img src="'+dat+'" style="width:64px;height:64px;object-fit:cover;border-radius:8px;border:1px solid var(--line)"><button class="eprm" data-k="'+it.key+'" data-id="'+id+'" style="position:absolute;top:-7px;right:-3px;background:var(--accent-deep);color:#fff;border:none;border-radius:50%;width:20px;height:20px;font-size:13px;cursor:pointer">×</button></div>';}d.innerHTML=html;d.querySelectorAll(".eprm").forEach(x=>x.onclick=async()=>{await photoDel(x.dataset.id);const t=equip.find(z=>z.key===x.dataset.k);if(t){t.photos=(t.photos||[]).filter(p=>p!==x.dataset.id);t.ts=new Date().toISOString();saveEquip();renderEquip();}});});
 }
 function addEquip(){
   const omr=$("eOmr").value.trim().padStart(4,"0");
@@ -576,7 +579,7 @@ function addEquip(){
   const ben=$("eBen").value.trim();if(!ben){toast("Ange benämning");return;}
   const antal=Math.max(1,parseInt($("eAnt").value,10)||1);
   const bi=($("eBygIng").value||"").split("|");
-  equip.push({key:(crypto.randomUUID?crypto.randomUUID():'e'+Date.now()+Math.random()),omr,byg:bi[0]||"",ing:bi[1]||"",ben,antal,note:"",inv:"",ts:new Date().toISOString()});
+  equip.push({key:(crypto.randomUUID?crypto.randomUUID():'e'+Date.now()+Math.random()),omr,byg:bi[0]||"",ing:bi[1]||"",ben,antal,note:"",inv:"",photos:[],ts:new Date().toISOString()});
   saveEquip();$("eBen").value="";$("eAnt").value="1";renderEquip();toast("Tillagt: "+ben+" ×"+antal);
 }
 function exportEquip(){
@@ -760,6 +763,7 @@ function init(){
   $("eChips").querySelectorAll(".addchip").forEach(c=>c.onclick=()=>{$("eBen").value=c.dataset.b;$("eAnt").focus();});
   $("eOmr").addEventListener("input",e=>{$("eOmrName").textContent=OMRADE[e.target.value.trim().padStart(4,"0")]||"okänt område";fillBygIng();});
   $("eAdd").onclick=addEquip;
+  if($("eqPhotoInput"))$("eqPhotoInput").onchange=async e=>{const f=e.target.files[0];if(!f||!eqPhotoTarget){e.target.value="";return;}e.target.value="";const it=equip.find(x=>x.key===eqPhotoTarget);if(!it)return;it.photos=it.photos||[];if(it.photos.length>=2){toast("Max 2 foton");return;}try{const d=await compressImage(f,1280,0.6);const id=(crypto.randomUUID?crypto.randomUUID():'p'+Date.now()+Math.random());await photoPut(id,d);it.photos.push(id);it.ts=new Date().toISOString();saveEquip();renderEquip();toast("Foto sparat");}catch(err){toast("Kunde inte spara foto");}};
   $("expJson").onclick=shareBackup;
   $("mergeBtn").onclick=()=>$("mergeFile").click();
   $("mergeFile").onchange=e=>{const f=e.target.files[0];if(!f)return;const rd=new FileReader();rd.onload=ev=>{mergeData(ev.target.result);e.target.value="";};rd.readAsText(f);};
