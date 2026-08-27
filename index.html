@@ -502,7 +502,7 @@ function hideSheet(){$("ovl").classList.remove("show");recKey=null;sheetShown=fa
 function closeRecord(){if(sheetShown){try{history.back();}catch(e){hideSheet();}}else{hideSheet();}}
 window.addEventListener("popstate",()=>{if($("ovl").classList.contains("show"))hideSheet();});
 
-function rowHead(o){return (o.source==='tillagd'&&o.benN)?(esc(o.benN)+' '+(o.lgh||'')):(o.lgh?('Lgh '+o.lgh):benLabel(o));}
+function rowHead(o){const added=o.source==='tillagd'||(o.lgh&&!/^\d+$/.test(o.lgh));return (added&&o.benN)?(esc(o.benN)+(o.lgh?' '+o.lgh:'')):(o.lgh?('Lgh '+o.lgh):benLabel(o));}
 const BENCODE=[["entré","E"],["entre","E"],["cykelförråd","CF"],["cykel","C"],["miljö","M"],["soprum","SR"],["elcentral","EL"],["undercentral","U"],["elrum","EL"],["barnvagn","BV"],["lägenhetsförråd","LF"],["fastighetsförråd","FF"],["vindsförråd","VF"],["förråd","F"],["trapphus","T"],["tvätt","TV"],["källardörr","KD"],["källar","K"],["korridor","KO"],["gallerbur","GB"],["garage","G"],["teknik","TK"],["fläktrum","FL"],["gemensam","GE"],["pentry","P"],["skyddsrum","SK"],["hissmaskin","HM"],["städ","ST"],["kontor","KN"],["gym","GY"],["förening","FÖ"],["sjukvård","SJ"],["lokal","LO"]];
 function benCode(ben){const n=(ben||"").toLowerCase();for(let i=0;i<BENCODE.length;i++){if(n.indexOf(BENCODE[i][0])>=0)return BENCODE[i][1];}return ((n.replace(/[^a-zåäö]/g,"")[0])||"X").toUpperCase();}
 function genHyresId(omr,byg,ing,ben){const b3=String(byg||"").trim().padStart(3,"0");const i2=String(ing||"").trim().padStart(2,"0");const pre=benCode(ben);const base=omr+"-"+b3+"-"+i2+"-"+pre;let n=0;objects.forEach(o=>{if(typeof o.hyres==="string"&&o.hyres.indexOf(base)===0){const rest=o.hyres.slice(base.length);if(/^\d+$/.test(rest))n=Math.max(n,parseInt(rest,10));}});return base+(n+1);}
