@@ -667,8 +667,8 @@ function exportMaterial(omrF){
   const accs=[["trycke","Trycke"],["tackbricka","Täckbricka"],["laskista","Låskista"],["ellas","El-lås"],["dorrstangare","Dörrstängare"]];
   const tally={},totals={};
   const bump=(omr,art,n)=>{(tally[omr]=tally[omr]||{})[art]=(tally[omr][art]||0)+(n||1);totals[art]=(totals[art]||0)+(n||1);};
-  objs.forEach(o=>{const omr=o.omr||"";(o.components||[]).forEach(c=>bump(omr,c.typ,1));accs.forEach(([k,label])=>{if(o[k])bump(omr,label,1);});});
-  const artOrder=CTYPES.map(c=>c.t).concat(accs.map(a=>a[1]));
+  objs.forEach(o=>{const omr=o.omr||"";(o.components||[]).forEach(c=>bump(omr,c.typ,1));accs.forEach(([k,label])=>{if(o[k])bump(omr,label,1);});const kc=keyCount(o);if(kc)bump(omr,"Nycklar",kc);});
+  const artOrder=CTYPES.map(c=>c.t).concat(accs.map(a=>a[1])).concat(["Nycklar"]);
   const ordered=t=>artOrder.filter(a=>t[a]).concat(Object.keys(t).filter(a=>!artOrder.includes(a)));
   const cols=["Typ","Område","Områdesnamn","Byggnad","Ingång","Artikel/Utrustning","Antal","Anteckning"];const rows=[];
   Object.keys(tally).sort().forEach(omr=>{ordered(tally[omr]).forEach(art=>rows.push(["Artikel",omr,OMRADE[omr]||"","","",art,tally[omr][art],""]));});
