@@ -108,6 +108,14 @@
   .tog{display:inline-flex;align-items:center;gap:8px;border:1.5px solid var(--line);border-radius:9px;padding:8px 11px;cursor:pointer;font-size:13.5px;font-weight:500;background:#fff}
   .tog .box{width:18px;height:18px;border-radius:5px;border:2px solid var(--line);flex:none;display:grid;place-items:center;color:#fff;font-size:12px}
   .tog.on{border-color:var(--steel);background:var(--steel-soft)}.tog.on .box{background:var(--ok);border-color:var(--ok)}
+  .mk{position:absolute;transform:translate(-50%,-50%) scale(var(--mks,1));background:#37434d;color:#fff;border:2px solid #fff;border-radius:11px;font-size:10px;font-weight:700;padding:2px 5px;box-shadow:0 1px 4px rgba(0,0,0,.45);white-space:nowrap;pointer-events:none;z-index:3}
+  .mk.cur{pointer-events:auto;cursor:grab}
+  .plview{position:relative;height:60vh;overflow:hidden;background:#eceff1;touch-action:none;user-select:none}
+  .plstage{position:absolute;top:0;left:0;width:100%;transform-origin:0 0;will-change:transform}
+  .plstage img{width:100%;display:block;pointer-events:none}
+  .plzoom{position:absolute;right:10px;bottom:10px;display:flex;flex-direction:column;gap:6px;z-index:10}
+  .plzoom button{width:40px;height:40px;border-radius:10px;border:1px solid var(--line);background:#fff;font-size:20px;font-weight:700;box-shadow:0 1px 4px rgba(0,0,0,.2);cursor:pointer}
+  .mk.cur{background:#1e7a46;z-index:5}
   .savezone{flex:none;background:var(--bg);padding:12px 16px;padding-bottom:max(18px,env(safe-area-inset-bottom));display:flex;gap:10px;border-top:1px solid var(--line-soft)}
   .toast{position:fixed;bottom:90px;left:50%;transform:translateX(-50%);background:var(--steel);color:#fff;font-size:13.5px;font-weight:500;padding:10px 16px;border-radius:10px;z-index:80;opacity:0;transition:.2s;pointer-events:none}
   .toast.show{opacity:1}
@@ -172,6 +180,12 @@ details.cov-details[open]>summary::after{transform:rotate(90deg)}
       <div id="impResult" class="hint" style="margin-top:12px"></div>
       <div id="poolStatus" class="hint" style="margin-top:10px;padding:10px 12px;border-radius:9px;background:var(--steel-soft)"></div>
     </div></div>
+    <h2 class="sec">Ritningar (per hus)</h2>
+    <div class="card"><div class="body">
+      <div class="drop" id="ritDrop"><div class="big">Välj ritningar</div><div class="sub">Bild (PNG/JPG) eller PDF, döpt efter område-husnummer, t.ex. 0652-001. Flera filer går bra.</div></div>
+      <input type="file" id="ritFile" accept="image/*,.pdf" multiple hidden>
+      <div id="ritResult" class="hint" style="margin-top:12px"></div>
+    </div></div>
     <div class="hint" style="margin:12px 4px;line-height:1.6">Appen hittar rubrikraden själv och mappar kolumnerna (lägenhetsnummer, hyresobjekt-id, byggnad, ingång, typ, Dörr-id m.m.). Redan inlästa objekt behåller sina enheter. Kör om när ni får nya områden.</div>
   </section>
 
@@ -201,6 +215,7 @@ details.cov-details[open]>summary::after{transform:rotate(90deg)}
         <button id="expProgO">Programmeringslista</button>
         <button id="expObjO">Objektlista</button>
         <button id="expMatO">Utrustning &amp; artiklar</button>
+        <button id="expPoolO">Dörr-id-pool</button>
       </div>
       <div class="hint" style="margin-top:8px">Väljer du ett område exporteras bara det området.</div>
     </div></div>
@@ -251,7 +266,7 @@ const TKEYS=TOGS.map(t=>t[0]);
 const EQUIP=["Centralapparat","Styra 3000","Styra komkort 4000","Dörrbox","Likriktare","Nätaggregat","Kortläsare","Porttelefon","Manöverpanel","Slingantenn","Motorlås"];
 
 let objects=[];let filter={omr:"",stat:""};let openGroups={};let activeGroup=null;let parsedWb=null,pickedSheets={};
-let didPool={};let didReserved={};
+let didPool={};let didReserved={};let poolBase={};
 let serverUrl="";let lastSync="";let equip=[];let eqPhotoTarget=null;
 const $=id=>document.getElementById(id);
 
@@ -275,6 +290,7 @@ async function load(){
   try{const v=await store.get("uh_objects_v3");if(v)objects=JSON.parse(v);}catch(e){}
   try{const p=await store.get("uh_didpool_v3");if(p)didPool=JSON.parse(p);}catch(e){}
   try{const rsv=await store.get("uh_didreserved_v3");if(rsv)didReserved=JSON.parse(rsv);}catch(e){}
+  try{const pb=await store.get("uh_poolbase_v3");if(pb)poolBase=JSON.parse(pb);}catch(e){}
   try{serverUrl=(await store.get("uh_server"))||"";}catch(e){}
   try{lastSync=(await store.get("uh_lastsync"))||"";}catch(e){}
   try{const eq=await store.get("uh_equip_v3");if(eq)equip=JSON.parse(eq);}catch(e){}
@@ -283,6 +299,7 @@ async function load(){
 }
 let st=null;function persist(){clearTimeout(st);st=setTimeout(()=>{store.set("uh_objects_v3",JSON.stringify(objects)).then(ok=>{if(!ok)toast("Kunde inte spara lokalt");});},250);}
 function savePool(){store.set("uh_didpool_v3",JSON.stringify(didPool));}
+function savePoolBase(){store.set("uh_poolbase_v3",JSON.stringify(poolBase));}
 function saveReserved(){store.set("uh_didreserved_v3",JSON.stringify(didReserved));}
 function reserve(id){if(id){didReserved[id]=true;saveReserved();}}
 function saveEquip(){store.set("uh_equip_v3",JSON.stringify(equip));}
@@ -332,7 +349,8 @@ function importPoolRows(rows){
   let hr=0;for(let i=0;i<Math.min(rows.length,8);i++){const c=rows[i].map(norm);if(c.some(x=>x.includes("dörr-id")||x.includes("dörr id")||x.includes("dörrid"))&&c.some(x=>x.includes("område"))){hr=i;break;}}
   const hh=rows[hr].map(norm);let di=-1,om=-1;
   for(let i=0;i<hh.length;i++){if(di<0&&(hh[i].includes("dörr-id")||hh[i].includes("dörr id")||hh[i].includes("dörrid")))di=i;if(om<0&&hh[i].includes("område"))om=i;}
-  let n=0;for(let r=hr+1;r<rows.length;r++){const id=cell(rows[r],di);if(!/^DI\d/i.test(id))continue;const omr=cell(rows[r],om).padStart(4,"0");(didPool[omr]=didPool[omr]||[]).push(id);n++;}
+  let n=0;for(let r=hr+1;r<rows.length;r++){const id=cell(rows[r],di);if(!/^DI\d/i.test(id))continue;const omr=cell(rows[r],om).padStart(4,"0");(didPool[omr]=didPool[omr]||[]).push(id);const sq=parseInt(id.slice(6),10);if(!isNaN(sq))poolBase[omr]=Math.max(poolBase[omr]||0,sq);n++;}
+  savePoolBase();
   return n;
 }
 function isPoolSheet(rows){
@@ -391,12 +409,15 @@ function roomCount(o){const m=aptText(o).match(/(\d+)\s*(?:rum|rok|rk|r\s*o\s*k)
 function isApartment(o){const t=aptText(o);if(/student/.test(t))return true;if(/\b(lägenhet|bostad|lgh|ungdomsbostad)\b/.test(t))return true;if(/(\d+)\s*(?:rum|rok|rk|r\s*o\s*k)/.test(t))return true;return false;}
 function keyCount(o){if(!isApartment(o))return "";if(/student/.test(aptText(o)))return 2;return Math.max(2,roomCount(o)||2);}
 function sizeText(o){for(const f of [o.rumben,o.typ,o.hyrtyp]){const s=String(f||"");if(/(\d+)\s*(?:rum|rok|rk|r\s*o\s*k)/.test(norm(s)))return s.trim();}return "";}
+function poolMax(omr){let max=2000;const scan=id=>{if(typeof id==="string"&&id.slice(0,6)==="DI"+omr){const n=parseInt(id.slice(6),10);if(!isNaN(n))max=Math.max(max,n);}};(didPool[omr]||[]).forEach(scan);objects.forEach(o=>{if(o.omr===omr)scan(o.di);});Object.keys(didReserved).forEach(scan);return max;}
+function extendPool(omr,n){n=n||50;let max=poolMax(omr);didPool[omr]=didPool[omr]||[];const added=[];for(let i=1;i<=n;i++){const id="DI"+omr+String(max+i).padStart(4,"0");added.push(id);didPool[omr].push(id);}savePool();toast(n+" nya Dörr-id genererade för "+omr+" (poolen tog slut)");return added;}
 function nextBaseDi(omr){
-  const pool=didPool[omr];
-  if(pool&&pool.length){for(let i=0;i<pool.length;i++){const id=pool[i];if(!didReserved[id]&&!objects.some(o=>o.di===id))return id;}}
-  let max=2000;objects.forEach(o=>{if(o.omr===omr){const m=/^DI\d{4}(\d+)$/.exec(o.di||"");if(m)max=Math.max(max,+m[1]);}});
-  const rx=new RegExp('^DI'+omr+'(\\d+)$');Object.keys(didReserved).forEach(id=>{const m=rx.exec(id);if(m)max=Math.max(max,+m[1]);});
-  return "DI"+omr+(max+1);
+  const free=id=>!didReserved[id]&&!objects.some(o=>o.di===id);
+  const pool=didPool[omr]||[];
+  for(let i=0;i<pool.length;i++){if(free(pool[i]))return pool[i];}
+  const added=extendPool(omr,50);
+  for(let i=0;i<added.length;i++){if(free(added[i]))return added[i];}
+  return added[0];
 }
 function nextSuffix(comps,typ){const base=PREF[typ]||6;const n=comps.filter(c=>c.typ===typ).length;return n===0?base:base*10+n;}
 
@@ -434,6 +455,80 @@ function objRow(o){
 }
 
 let recKey=null,draft=null,recObj=null;
+let placeKey=null;
+function byg3(o){return String(o.byg||"").padStart(3,"0");}
+function ritKey(o){return "RIT_"+o.omr+"-"+byg3(o);}
+function loadScript(src){return new Promise((res,rej)=>{if(document.querySelector('script[src="'+src+'"]'))return res();const s=document.createElement("script");s.src=src;s.onload=res;s.onerror=()=>rej(new Error("script"));document.head.appendChild(s);});}
+async function pdfFirstPageDataURL(file){
+  if(!window.pdfjsLib){await loadScript("https://cdnjs.cloudflare.com/ajax/libs/pdf.js/3.11.174/pdf.min.js");window.pdfjsLib.GlobalWorkerOptions.workerSrc="https://cdnjs.cloudflare.com/ajax/libs/pdf.js/3.11.174/pdf.worker.min.js";}
+  const buf=await file.arrayBuffer();const pdf=await window.pdfjsLib.getDocument({data:buf}).promise;const page=await pdf.getPage(1);
+  const v1=page.getViewport({scale:1});const scale=Math.min(3,2200/Math.max(v1.width,v1.height));const vp=page.getViewport({scale});
+  const cv=document.createElement("canvas");cv.width=vp.width;cv.height=vp.height;await page.render({canvasContext:cv.getContext("2d"),viewport:vp}).promise;
+  return cv.toDataURL("image/jpeg",0.82);
+}
+function parseRitName(name){const b=name.replace(/\.[^.]+$/,"");const m=b.match(/(\d{4})\D{0,3}(\d{1,3})/);return m?(m[1]+"-"+m[2].padStart(3,"0")):null;}
+async function importRitningar(files){
+  if($("ritResult"))$("ritResult").textContent="Läser ritningar …";
+  let ok=0;const fail=[];
+  for(const f of files){
+    const key=parseRitName(f.name);
+    if(!key){fail.push(f.name+" (döp som område-husnummer, t.ex. 0652-001)");continue;}
+    try{
+      let data;
+      if(/\.pdf$/i.test(f.name)||f.type==="application/pdf"){data=await pdfFirstPageDataURL(f);}
+      else{data=await compressImage(f,2200,0.82);}
+      await photoPut("RIT_"+key,data);ok++;
+    }catch(e){fail.push(f.name+" (kunde inte läsas)");}
+  }
+  if($("ritResult"))$("ritResult").innerHTML="✓ "+ok+" ritning(ar) inlästa."+(fail.length?'<br><span style="color:var(--accent-deep)">Hoppade över: '+fail.map(esc).join(", ")+"</span>":"");
+  toast(ok+" ritningar inlästa");
+}
+async function openPlacera(key){
+  const o=objects.find(x=>x.key===key);if(!o)return;placeKey=key;
+  const rk=ritKey(o);const img=await photoGet(rk);
+  const head='<div class="gripbar"><div class="ttl">Placera · '+esc(rowHead(o))+'<small>Hus '+byg3(o)+(o.ing?' · ing '+o.ing:'')+' · '+(o.di||'')+'</small></div><button id="plClose">×</button></div>';
+  if(!img){
+    $("sheet").innerHTML=head+'<div class="wrap"><div class="card"><div class="body"><div class="empty" style="padding:28px 14px;line-height:1.7">Ingen ritning importerad för <b>'+o.omr+'-'+byg3(o)+'</b>.<br><small style="color:var(--muted)">Importera en ritning döpt '+o.omr+'-'+byg3(o)+' (bild eller PDF) under fliken Importera.</small></div></div></div></div><div class="savezone"><button class="btn primary" id="plDone" style="flex:1">Klar</button></div>';
+    showSheet();$("sheet").querySelector("#plClose").onclick=closeRecord;$("sheet").querySelector("#plDone").onclick=closeRecord;return;
+  }
+  const lbl=x=>((x.di||"").replace(/^DI\d{4}/,"")||rowHead(x).slice(0,6));
+  const same=objects.filter(x=>x.omr===o.omr&&byg3(x)===byg3(o)&&x.mark&&x.key!==o.key);
+  const dot=(x,cur)=>'<div class="mk'+(cur?' cur':'')+'"'+(cur?' id="mkCur"':'')+' style="left:'+(x.mark.x*100)+'%;top:'+(x.mark.y*100)+'%">'+esc(lbl(x))+'</div>';
+  const marks=same.map(x=>dot(x,false)).join("")+(o.mark?dot(o,true):'');
+  $("sheet").innerHTML=head+
+    '<div id="plView" class="plview"><div id="plStage" class="plstage"><img id="plImg" src="'+img+'" draggable="false">'+marks+'</div>'+
+    '<div class="plzoom"><button id="plIn">+</button><button id="plOut">\u2212</button><button id="plFit">\u2922</button></div></div>'+
+    '<div class="hint" style="padding:8px 14px">Tryck för att placera \u00b7 dra gröna markören för att flytta \u00b7 nyp/knappar för att zooma.'+(same.length?' '+same.length+' andra dörrar visas som referens.':'')+'</div>'+
+    '<div class="savezone"><button class="btn ghost" id="plDel" style="flex:0 0 auto">Ta bort</button><button class="btn ghost" id="plNext" style="flex:1">Nästa</button><button class="btn primary" id="plDone" style="flex:1">Klar</button></div>';
+  showSheet();const S=$("sheet");
+  const view=S.querySelector("#plView"),stage=S.querySelector("#plStage"),imgEl=S.querySelector("#plImg");
+  let scale=1,tx=0,ty=0;
+  function apply(){stage.style.transform="translate("+tx+"px,"+ty+"px) scale("+scale+")";stage.style.setProperty("--mks",1/scale);}
+  apply();
+  function fracFromClient(cx,cy){const r=imgEl.getBoundingClientRect();return {x:Math.max(0,Math.min(1,(cx-r.left)/r.width)),y:Math.max(0,Math.min(1,(cy-r.top)/r.height))};}
+  function setMark(fr){o.mark=fr;o.ts=new Date().toISOString();persist();refreshAll();let cur=stage.querySelector("#mkCur");if(!cur){cur=document.createElement("div");cur.className="mk cur";cur.id="mkCur";stage.appendChild(cur);}cur.style.left=(fr.x*100)+"%";cur.style.top=(fr.y*100)+"%";cur.textContent=lbl(o);}
+  const pts=new Map();let mode=null,sx,sy,tx0,ty0,pd0,sc0,mid0;
+  view.addEventListener("pointerdown",e=>{try{view.setPointerCapture(e.pointerId);}catch(_){}pts.set(e.pointerId,{x:e.clientX,y:e.clientY});
+    if(pts.size===1){const onCur=e.target&&e.target.closest&&e.target.closest("#mkCur");mode=onCur?"drag":"maybe";sx=e.clientX;sy=e.clientY;tx0=tx;ty0=ty;}
+    else if(pts.size===2){mode="pinch";const a=[...pts.values()];pd0=Math.hypot(a[0].x-a[1].x,a[0].y-a[1].y)||1;sc0=scale;mid0={x:(a[0].x+a[1].x)/2,y:(a[0].y+a[1].y)/2};tx0=tx;ty0=ty;}});
+  view.addEventListener("pointermove",e=>{if(!pts.has(e.pointerId))return;pts.set(e.pointerId,{x:e.clientX,y:e.clientY});
+    if(mode==="pinch"&&pts.size>=2){const a=[...pts.values()];const d=Math.hypot(a[0].x-a[1].x,a[0].y-a[1].y)||1;const mid={x:(a[0].x+a[1].x)/2,y:(a[0].y+a[1].y)/2};const ns=Math.max(1,Math.min(10,sc0*d/pd0));const vr=view.getBoundingClientRect();const mx=mid0.x-vr.left,my=mid0.y-vr.top;tx=mx-(mx-tx0)*(ns/sc0)+(mid.x-mid0.x);ty=my-(my-ty0)*(ns/sc0)+(mid.y-mid0.y);scale=ns;apply();return;}
+    if(mode==="drag"){setMark(fracFromClient(e.clientX,e.clientY));return;}
+    const dx=e.clientX-sx,dy=e.clientY-sy;
+    if(mode==="maybe"&&Math.abs(dx)+Math.abs(dy)>8)mode="pan";
+    if(mode==="pan"){tx=tx0+dx;ty=ty0+dy;apply();}});
+  function up(e){if(mode==="maybe"){setMark(fracFromClient(e.clientX,e.clientY));toast("Placerad \u2713");}pts.delete(e.pointerId);if(pts.size===0)mode=null;else if(mode==="pinch")mode="pan";}
+  view.addEventListener("pointerup",up);view.addEventListener("pointercancel",e=>{pts.delete(e.pointerId);if(pts.size===0)mode=null;});
+  function zoomBy(f){const vr=view.getBoundingClientRect(),mx=vr.width/2,my=vr.height/2,ns=Math.max(1,Math.min(10,scale*f));tx=mx-(mx-tx)*(ns/scale);ty=my-(my-ty)*(ns/scale);scale=ns;apply();}
+  S.querySelector("#plIn").onclick=()=>zoomBy(1.5);
+  S.querySelector("#plOut").onclick=()=>zoomBy(1/1.5);
+  S.querySelector("#plFit").onclick=()=>{scale=1;tx=0;ty=0;apply();};
+  S.querySelector("#plClose").onclick=closeRecord;
+  S.querySelector("#plDone").onclick=closeRecord;
+  S.querySelector("#plDel").onclick=()=>{if(o.mark){delete o.mark;o.ts=new Date().toISOString();persist();refreshAll();const c=stage.querySelector("#mkCur");if(c)c.remove();toast("Markör borttagen");}else toast("Ingen markör att ta bort");};
+  S.querySelector("#plNext").onclick=()=>{const gk=o.omr+"|"+(o.byg||"")+"|"+(o.ing||"");const nx=objects.find(x=>(x.omr+"|"+(x.byg||"")+"|"+(x.ing||""))===gk&&!isDone(x)&&x.key!==o.key)||objects.find(x=>x.omr===o.omr&&byg3(x)===byg3(o)&&x.key!==o.key);if(nx)openRecord(nx.key);else{closeRecord();toast("Inga fler objekt i huset");}};
+}
+
 function openRecord(key){
   const o=objects.find(x=>x.key===key);if(!o)return;recKey=key;
   draft={comps:JSON.parse(JSON.stringify(o.components||[])),tillbeharFri:o.tillbeharFri||"",note:o.note||"",inv:o.inv||""};
@@ -452,7 +547,7 @@ function openRecord(key){
     '<div class="grid g2" style="margin-top:14px"><div class="field"><label>Inventerare</label><input id="rInv" value="'+esc(draft.inv)+'" placeholder="Ditt namn"></div><div class="field"><label>Anteckning</label><input id="rNote" value="'+esc(draft.note)+'" placeholder="—"></div></div>'+
     '<button class="btn ghost" id="rDelete" style="width:100%;margin-top:16px;color:var(--accent-deep);border-color:#e7c3b5">Ta bort detta objekt (finns ej)</button>'+
     '</div></div></div>'+
-    '<div class="savezone"><button class="btn ghost" id="rClear" style="flex:0 0 auto">Töm</button><button class="btn primary" id="rSave" style="flex:1">Spara &amp; nästa</button></div>';
+    '<div class="savezone"><button class="btn ghost" id="rClear" style="flex:0 0 auto">Töm</button><button class="btn ghost" id="rPlace" style="flex:1">Spara &amp; placera</button><button class="btn primary" id="rSave" style="flex:1">Spara &amp; nästa</button></div>';
   showSheet();recObj=o;const S=$("sheet");renderComps();
   S.querySelector("#rClose").onclick=closeRecord;
   const ab=S.querySelector("#assignBase");if(ab)ab.onclick=()=>assignBase(o);
@@ -467,6 +562,7 @@ function openRecord(key){
     }
   };
   S.querySelector("#rSave").onclick=saveRecord;
+  const rPl=S.querySelector("#rPlace");if(rPl)rPl.onclick=()=>{const o2=objects.find(x=>x.key===recKey);if(o2){collectDraft();writeBack(o2);persist();refreshAll();}openPlacera(recKey);};
   renderPhotos(o);
   $("photoInput").onchange=async e=>{const f=e.target.files[0];if(!f)return;e.target.value="";o.photos=o.photos||[];if(o.photos.length>=2){toast("Max 2 foton");return;}
     try{const d=await compressImage(f,1280,0.6);const id=(crypto.randomUUID?crypto.randomUUID():'p'+Date.now()+Math.random());await photoPut(id,d);o.photos.push(id);o.ts=new Date().toISOString();persist();renderPhotos(o);refreshAll();toast("Foto sparat");}catch(err){toast("Kunde inte spara foto");}};
@@ -631,6 +727,14 @@ function openBulk(gk){
   };
   drawList();updSel();
 }
+function exportPool(omrF){
+  const areas=omrF?[omrF]:Object.keys(didPool||{});
+  const used=new Set(objects.map(o=>o.di).filter(Boolean));
+  const cols=["OmrådeKod","DörrId","Status","Källa"];const rows=[];
+  areas.sort().forEach(omr=>{const base=poolBase[omr]||0;(didPool[omr]||[]).slice().sort().forEach(id=>{const sq=parseInt(id.slice(6),10);const kalla=(base&&!isNaN(sq)&&sq>base)?"Tillägg":"Ursprunglig";rows.push([omr,id,used.has(id)?"Använd":(didReserved[id]?"Reserverad":"Ledig"),kalla]);});});
+  if(!rows.length){toast("Ingen pool för valt område");return;}
+  dl("dorrid_pool_"+(omrF?omrF+"_":"")+stamp()+".csv","\uFEFF"+[cols].concat(rows).map(r=>r.map(cc).join(";")).join("\r\n"));
+}
 function exportProg(omrF){
   const cols=["Kategori","Dörr-id","Bas-Dörr-id","Suffix","Enhetstyp","Antal st","Utrymme","Utrymme fritext","B-mått","Hyresobjekt","Rumskod","Område","Områdesnamn","Byggnad","Ingång","Lägenhet","Benämning","Objekttyp","Lägenhetsstorlek","Antal nycklar","Tillbehör","Anteckning","Inventerare","Källa"];
   const recs=[];
@@ -722,6 +826,8 @@ async function syncNow(){
       const refIds=new Set();objects.forEach(o=>(o.photos||[]).forEach(id=>refIds.add(id)));
       for(const id of refIds){if(localKeys.has(id)&&!srvIds.has(id)){const d=await photoGet(id);if(d){await fetch(base+"/api/photo",{method:"POST",headers:{"Content-Type":"application/json"},body:JSON.stringify({id,data:d})}).catch(()=>{});}}}
       for(const id of refIds){if(!localKeys.has(id)&&srvIds.has(id)){const bl=await fetch(base+"/api/photo/"+id).then(r=>r.ok?r.blob():null).catch(()=>null);if(bl){const du=await blobToDataURL(bl);if(du)await photoPut(id,du);}}}
+      const ritLocal=[...localKeys].filter(k=>typeof k==="string"&&k.indexOf("RIT_")===0);for(const id of ritLocal){if(!srvIds.has(id)){const d=await photoGet(id);if(d)await fetch(base+"/api/photo",{method:"POST",headers:{"Content-Type":"application/json"},body:JSON.stringify({id,data:d})}).catch(()=>{});}}
+      const ritSrv=[...srvIds].filter(k=>typeof k==="string"&&k.indexOf("RIT_")===0);for(const id of ritSrv){if(!localKeys.has(id)){const bl=await fetch(base+"/api/photo/"+id).then(r=>r.ok?r.blob():null).catch(()=>null);if(bl){const du=await blobToDataURL(bl);if(du)await photoPut(id,du);}}}
     }catch(e){}
     toast("Synkad mot server ✓");loadFotoAreas();
     $("syncStatus").textContent="Senaste synk: "+fmt(lastSync);
@@ -755,12 +861,13 @@ function init(){
   $("fStat").onchange=e=>{filter.stat=e.target.value;renderBrowse();};
   if($("fotoExp")){$("fotoExp").onclick=fotoExport;$("fotoDel").onclick=fotoClear;loadFotoAreas();}
   const drop=$("drop"),file=$("file");drop.onclick=()=>file.click();file.onchange=e=>{if(e.target.files[0])handleFile(e.target.files[0]);};
+  const ritDrop=$("ritDrop"),ritFile=$("ritFile");if(ritDrop){ritDrop.onclick=()=>ritFile.click();ritFile.onchange=e=>{if(e.target.files.length)importRitningar([...e.target.files]);e.target.value="";};["dragover","dragenter"].forEach(ev=>ritDrop.addEventListener(ev,e=>{e.preventDefault();ritDrop.classList.add("hot");}));["dragleave","drop"].forEach(ev=>ritDrop.addEventListener(ev,e=>{e.preventDefault();ritDrop.classList.remove("hot");}));ritDrop.addEventListener("drop",e=>{if(e.dataTransfer.files.length)importRitningar([...e.dataTransfer.files]);});}
   ["dragover","dragenter"].forEach(ev=>drop.addEventListener(ev,e=>{e.preventDefault();drop.classList.add("hot");}));
   ["dragleave","drop"].forEach(ev=>drop.addEventListener(ev,e=>{e.preventDefault();drop.classList.remove("hot");}));
   drop.addEventListener("drop",e=>{if(e.dataTransfer.files[0])handleFile(e.dataTransfer.files[0]);});
   $("impGo").onclick=()=>{if(!parsedWb){toast("Välj en fil först");return;}if(!Object.values(pickedSheets).some(Boolean)){toast("Markera minst ett blad");return;}importSheets();};
   $("expCsv").onclick=()=>exportProg("");$("expObj").onclick=()=>exportObj("");if($("expMat"))$("expMat").onclick=()=>exportMaterial("");
-  if($("expProgO")){$("expProgO").onclick=()=>exportProg($("expOmr").value);$("expObjO").onclick=()=>exportObj($("expOmr").value);$("expMatO").onclick=()=>exportMaterial($("expOmr").value);}
+  if($("expProgO")){$("expProgO").onclick=()=>exportProg($("expOmr").value);$("expObjO").onclick=()=>exportObj($("expOmr").value);$("expMatO").onclick=()=>exportMaterial($("expOmr").value);if($("expPoolO"))$("expPoolO").onclick=()=>exportPool($("expOmr").value);}
   $("eChips").innerHTML=EQUIP.map(x=>'<div class="addchip" data-b="'+x+'">'+x+'</div>').join("");
   $("eChips").querySelectorAll(".addchip").forEach(c=>c.onclick=()=>{$("eBen").value=c.dataset.b;$("eAnt").focus();});
   $("eOmr").addEventListener("input",e=>{$("eOmrName").textContent=OMRADE[e.target.value.trim().padStart(4,"0")]||"okänt område";fillBygIng();});
