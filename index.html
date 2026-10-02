@@ -185,6 +185,7 @@ details.cov-details[open]>summary::after{transform:rotate(90deg)}
       <div class="drop" id="ritDrop"><div class="big">Välj ritningar</div><div class="sub">Bild (PNG/JPG) eller PDF, döpt efter område-husnummer, t.ex. 0652-001. Flera filer går bra.</div></div>
       <input type="file" id="ritFile" accept="image/*,.pdf" multiple hidden>
       <div id="ritResult" class="hint" style="margin-top:12px"></div>
+      <div class="tools" style="margin-top:10px"><button id="ritExport">Exportera ritningar (zip)</button></div>
     </div></div>
     <div class="hint" style="margin:12px 4px;line-height:1.6">Appen hittar rubrikraden själv och mappar kolumnerna (lägenhetsnummer, hyresobjekt-id, byggnad, ingång, typ, Dörr-id m.m.). Redan inlästa objekt behåller sina enheter. Kör om när ni får nya områden.</div>
   </section>
@@ -483,6 +484,18 @@ async function importRitningar(files){
   if($("ritResult"))$("ritResult").innerHTML="✓ "+ok+" ritning(ar) inlästa."+(fail.length?'<br><span style="color:var(--accent-deep)">Hoppade över: '+fail.map(esc).join(", ")+"</span>":"");
   toast(ok+" ritningar inlästa");
 }
+async function exportRitningar(){
+  const keys=(await photoKeys()).filter(k=>typeof k==="string"&&k.indexOf("RIT_")===0);
+  if(!keys.length){toast("Inga ritningar inlästa");return;}
+  toast("Packar "+keys.length+" ritningar …");
+  try{
+    if(!window.JSZip)await loadScript("https://cdnjs.cloudflare.com/ajax/libs/jszip/3.10.1/jszip.min.js");
+    const zip=new JSZip();
+    for(const k of keys){const d=await photoGet(k);if(!d||d.indexOf(",")<0)continue;zip.file(k.replace(/^RIT_/,"")+".jpg",d.split(",")[1],{base64:true});}
+    const blob=await zip.generateAsync({type:"blob"});const url=URL.createObjectURL(blob);const a=document.createElement("a");a.href=url;a.download="ritningar_"+stamp()+".zip";document.body.appendChild(a);a.click();a.remove();setTimeout(()=>URL.revokeObjectURL(url),3000);
+    toast(keys.length+" ritningar exporterade");
+  }catch(e){toast("Kunde inte exportera ritningar");}
+}
 async function openPlacera(key){
   const o=objects.find(x=>x.key===key);if(!o)return;placeKey=key;
   const rk=ritKey(o);const img=await photoGet(rk);
@@ -519,6 +532,7 @@ async function openPlacera(key){
     if(mode==="pan"){tx=tx0+dx;ty=ty0+dy;apply();}});
   function up(e){if(mode==="maybe"){setMark(fracFromClient(e.clientX,e.clientY));toast("Placerad \u2713");}pts.delete(e.pointerId);if(pts.size===0)mode=null;else if(mode==="pinch")mode="pan";}
   view.addEventListener("pointerup",up);view.addEventListener("pointercancel",e=>{pts.delete(e.pointerId);if(pts.size===0)mode=null;});
+  view.addEventListener("wheel",e=>{e.preventDefault();const vr=view.getBoundingClientRect(),mx=e.clientX-vr.left,my=e.clientY-vr.top,f=e.deltaY<0?1.15:1/1.15,ns=Math.max(1,Math.min(10,scale*f));tx=mx-(mx-tx)*(ns/scale);ty=my-(my-ty)*(ns/scale);scale=ns;apply();},{passive:false});
   function zoomBy(f){const vr=view.getBoundingClientRect(),mx=vr.width/2,my=vr.height/2,ns=Math.max(1,Math.min(10,scale*f));tx=mx-(mx-tx)*(ns/scale);ty=my-(my-ty)*(ns/scale);scale=ns;apply();}
   S.querySelector("#plIn").onclick=()=>zoomBy(1.5);
   S.querySelector("#plOut").onclick=()=>zoomBy(1/1.5);
@@ -861,6 +875,7 @@ function init(){
   $("fStat").onchange=e=>{filter.stat=e.target.value;renderBrowse();};
   if($("fotoExp")){$("fotoExp").onclick=fotoExport;$("fotoDel").onclick=fotoClear;loadFotoAreas();}
   const drop=$("drop"),file=$("file");drop.onclick=()=>file.click();file.onchange=e=>{if(e.target.files[0])handleFile(e.target.files[0]);};
+  if($("ritExport"))$("ritExport").onclick=exportRitningar;
   const ritDrop=$("ritDrop"),ritFile=$("ritFile");if(ritDrop){ritDrop.onclick=()=>ritFile.click();ritFile.onchange=e=>{if(e.target.files.length)importRitningar([...e.target.files]);e.target.value="";};["dragover","dragenter"].forEach(ev=>ritDrop.addEventListener(ev,e=>{e.preventDefault();ritDrop.classList.add("hot");}));["dragleave","drop"].forEach(ev=>ritDrop.addEventListener(ev,e=>{e.preventDefault();ritDrop.classList.remove("hot");}));ritDrop.addEventListener("drop",e=>{if(e.dataTransfer.files.length)importRitningar([...e.dataTransfer.files]);});}
   ["dragover","dragenter"].forEach(ev=>drop.addEventListener(ev,e=>{e.preventDefault();drop.classList.add("hot");}));
   ["dragleave","drop"].forEach(ev=>drop.addEventListener(ev,e=>{e.preventDefault();drop.classList.remove("hot");}));
