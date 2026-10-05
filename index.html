@@ -223,6 +223,8 @@ details.cov-details[open]>summary::after{transform:rotate(90deg)}
         <button id="expPoolO">Dörr-id-pool</button>
       </div>
       <div class="hint" style="margin-top:8px">Väljer du ett område exporteras bara det området.</div>
+      <button id="resetDiO" class="danger" style="margin-top:12px;width:100%">Återställ Dörr-id för valt område</button>
+      <div class="hint" style="margin-top:6px;color:var(--muted)">Nollställer tilldelade bas-Dörr-id för området så nästa Tilldela alla börjar om på 2001. Kräver att du skriver områdeskoden.</div>
     </div></div>
     <h2 class="sec">Foton per område</h2>
     <div class="card"><div class="body">
@@ -428,10 +430,22 @@ function nextSuffix(comps,typ){const base=PREF[typ]||6;const n=comps.filter(c=>c
 
 function omrOptions(){const used=[...new Set(objects.map(o=>o.omr))].sort();
   $("fOmr").innerHTML='<option value="">Alla områden</option>'+used.map(o=>'<option value="'+o+'">'+o+' · '+(OMRADE[o]||"")+'</option>').join("");$("fOmr").value=filter.omr;}
+function resetArea(omr){
+  if(!omr){toast("Välj ett område i rullgardinen först");return;}
+  const cnt=objects.filter(o=>o.omr===omr&&o.di).length;
+  if(!cnt){toast("Inga tilldelade Dörr-id i "+omr);return;}
+  const typed=prompt("ÅTERSTÄLL Dörr-id för område "+omr+(OMRADE[omr]?" ("+OMRADE[omr]+")":"")+"?\n\n• Tar bort bas-Dörr-id från "+cnt+" objekt\n• Frigör poolen så nästa tilldelning börjar om på 2001\n• Komponenter/enheter behålls\n\nSkriv områdeskoden ("+omr+") för att bekräfta:");
+  if(typed===null)return;
+  if(typed.trim()!==omr){toast("Fel områdeskod angiven – återställning avbruten");return;}
+  let n=0;objects.forEach(o=>{if(o.omr===omr&&o.di){o.di="";o.diAssigned=false;o.ts=new Date().toISOString();n++;}});
+  const rx=new RegExp("^DI"+omr);Object.keys(didReserved).forEach(id=>{if(rx.test(id))delete didReserved[id];});
+  saveReserved();persist();refreshAll();toast("Återställde "+n+" Dörr-id i "+omr+" – börja om med Tilldela alla");
+}
 function bulkAssign(){
   const scope=objects.filter(o=>(!filter.omr||o.omr===filter.omr)&&!o.di);
   if(!scope.length){toast("Inga objekt saknar bas-Dörr-id");return;}
   if(!confirm("Tilldela bas-Dörr-id till "+scope.length+" objekt"+(filter.omr?(" i område "+filter.omr):" (alla områden)")+"?\n\nNumren dras ur den officiella listan. Objekt som inte ska ha lås (t.ex. bilplats) bör du hoppa över — ångra genom att ta bort objektet om det blev fel.")) return;
+  scope.sort((a,b)=>{const x=a.hyres||a.key||"",y=b.hyres||b.key||"";return x<y?-1:x>y?1:0;});
   scope.forEach(o=>{o.di=nextBaseDi(o.omr);o.diAssigned=true;didReserved[o.di]=true;});
   saveReserved();persist();refreshAll();toast(scope.length+" objekt fick bas-Dörr-id");
 }
@@ -508,7 +522,7 @@ async function openRitningView(omr,byg){
   const b3=String(byg||"").padStart(3,"0");const img=await photoGet("RIT_"+omr+"-"+b3);
   const head='<div class="gripbar"><div class="ttl">Ritning · Hus '+b3+'<small>'+omr+' · '+(OMRADE[omr]||"")+'</small></div><button id="rvClose">×</button></div>';
   if(!img){$("sheet").innerHTML=head+'<div class="wrap"><div class="card"><div class="body"><div class="empty" style="padding:28px 14px;line-height:1.7">Ingen ritning importerad för <b>'+omr+'-'+b3+'</b>.<br><small style="color:var(--muted)">Importera en ritning döpt '+omr+'-'+b3+' under fliken Importera.</small></div></div></div></div><div class="savezone"><button class="btn primary" id="rvDone" style="flex:1">Klar</button></div>';showSheet();$("sheet").querySelector("#rvClose").onclick=closeRecord;$("sheet").querySelector("#rvDone").onclick=closeRecord;return;}
-  const lbl=x=>((x.di||"").replace(/^DI\d{4}/,"")||rowHead(x).slice(0,6));
+  const lbl=x=>(x.di?String(x.di).slice(-4):(x.lgh||""));
   const doors=objects.filter(x=>x.omr===omr&&byg3(x)===b3&&x.mark);
   const dot=x=>'<div class="mk tap '+(isDone(x)?'done':'todo')+'" data-k="'+x.key+'" style="left:'+(x.mark.x*100)+'%;top:'+(x.mark.y*100)+'%">'+esc(lbl(x))+'</div>';
   $("sheet").innerHTML=head+
@@ -533,6 +547,19 @@ async function openRitningView(omr,byg){
   S.querySelector("#rvIn").onclick=()=>zoomBy(1.5);S.querySelector("#rvOut").onclick=()=>zoomBy(1/1.5);S.querySelector("#rvFit").onclick=()=>{scale=1;tx=0;ty=0;apply();};
   S.querySelector("#rvClose").onclick=closeRecord;S.querySelector("#rvDone").onclick=closeRecord;
 }
+async function composeRit(key){
+  const data=await photoGet(key);if(!data)return null;
+  const img=await new Promise((res,rej)=>{const im=new Image();im.onload=()=>res(im);im.onerror=rej;im.src=data;});
+  const cv=document.createElement("canvas");cv.width=img.naturalWidth||img.width;cv.height=img.naturalHeight||img.height;
+  const ctx=cv.getContext("2d");ctx.drawImage(img,0,0);
+  const p=key.replace(/^RIT_/,"").split("-");const omr=p[0],b3=p[1]||"";
+  const doors=objects.filter(x=>x.omr===omr&&byg3(x)===b3&&x.mark);
+  const fs=Math.max(13,Math.round(cv.width/75));ctx.font="bold "+fs+"px sans-serif";ctx.textBaseline="middle";ctx.textAlign="center";
+  doors.forEach(x=>{const lx=x.mark.x*cv.width,ly=x.mark.y*cv.height;const txt=(x.di?String(x.di).slice(-4):(x.lgh||""));const pad=fs*0.45;const w=ctx.measureText(txt).width+pad*2;const h=fs+pad*1.2;const rx=lx-w/2,ry=ly-h/2,r=h/3;
+    ctx.fillStyle=isDone(x)?"#1e7a46":"#c0392b";ctx.beginPath();ctx.moveTo(rx+r,ry);ctx.arcTo(rx+w,ry,rx+w,ry+h,r);ctx.arcTo(rx+w,ry+h,rx,ry+h,r);ctx.arcTo(rx,ry+h,rx,ry,r);ctx.arcTo(rx,ry,rx+w,ry,r);ctx.closePath();ctx.fill();
+    ctx.lineWidth=Math.max(2,fs/7);ctx.strokeStyle="#fff";ctx.stroke();ctx.fillStyle="#fff";ctx.fillText(txt,lx,ly);});
+  return cv.toDataURL("image/jpeg",0.85);
+}
 async function exportRitningar(){
 
   const keys=(await photoKeys()).filter(k=>typeof k==="string"&&k.indexOf("RIT_")===0);
@@ -541,7 +568,7 @@ async function exportRitningar(){
   try{
     if(!window.JSZip)await loadScript("https://cdnjs.cloudflare.com/ajax/libs/jszip/3.10.1/jszip.min.js");
     const zip=new JSZip();
-    for(const k of keys){const d=await photoGet(k);if(!d||d.indexOf(",")<0)continue;zip.file(k.replace(/^RIT_/,"")+".jpg",d.split(",")[1],{base64:true});}
+    for(const k of keys){let d=null;try{d=await composeRit(k);}catch(e){d=await photoGet(k);}if(!d||d.indexOf(",")<0)continue;zip.file(k.replace(/^RIT_/,"")+".jpg",d.split(",")[1],{base64:true});}
     const blob=await zip.generateAsync({type:"blob"});const url=URL.createObjectURL(blob);const a=document.createElement("a");a.href=url;a.download="ritningar_"+stamp()+".zip";document.body.appendChild(a);a.click();a.remove();setTimeout(()=>URL.revokeObjectURL(url),3000);
     toast(keys.length+" ritningar exporterade");
   }catch(e){toast("Kunde inte exportera ritningar");}
@@ -554,7 +581,7 @@ async function openPlacera(key){
     $("sheet").innerHTML=head+'<div class="wrap"><div class="card"><div class="body"><div class="empty" style="padding:28px 14px;line-height:1.7">Ingen ritning importerad för <b>'+o.omr+'-'+byg3(o)+'</b>.<br><small style="color:var(--muted)">Importera en ritning döpt '+o.omr+'-'+byg3(o)+' (bild eller PDF) under fliken Importera.</small></div></div></div></div><div class="savezone"><button class="btn primary" id="plDone" style="flex:1">Klar</button></div>';
     showSheet();$("sheet").querySelector("#plClose").onclick=closeRecord;$("sheet").querySelector("#plDone").onclick=closeRecord;return;
   }
-  const lbl=x=>((x.di||"").replace(/^DI\d{4}/,"")||rowHead(x).slice(0,6));
+  const lbl=x=>(x.di?String(x.di).slice(-4):(x.lgh||""));
   const same=objects.filter(x=>x.omr===o.omr&&byg3(x)===byg3(o)&&x.mark&&x.key!==o.key);
   const dot=(x,cur)=>'<div class="mk'+(cur?' cur':'')+'"'+(cur?' id="mkCur"':'')+' style="left:'+(x.mark.x*100)+'%;top:'+(x.mark.y*100)+'%">'+esc(lbl(x))+'</div>';
   const marks=same.map(x=>dot(x,false)).join("")+(o.mark?dot(o,true):'');
@@ -933,6 +960,7 @@ function init(){
   drop.addEventListener("drop",e=>{if(e.dataTransfer.files[0])handleFile(e.dataTransfer.files[0]);});
   $("impGo").onclick=()=>{if(!parsedWb){toast("Välj en fil först");return;}if(!Object.values(pickedSheets).some(Boolean)){toast("Markera minst ett blad");return;}importSheets();};
   $("expCsv").onclick=()=>exportProg("");$("expObj").onclick=()=>exportObj("");if($("expMat"))$("expMat").onclick=()=>exportMaterial("");
+  if($("resetDiO"))$("resetDiO").onclick=()=>resetArea($("expOmr").value);
   if($("expProgO")){$("expProgO").onclick=()=>exportProg($("expOmr").value);$("expObjO").onclick=()=>exportObj($("expOmr").value);$("expMatO").onclick=()=>exportMaterial($("expOmr").value);if($("expPoolO"))$("expPoolO").onclick=()=>exportPool($("expOmr").value);}
   $("eChips").innerHTML=EQUIP.map(x=>'<div class="addchip" data-b="'+x+'">'+x+'</div>').join("");
   $("eChips").querySelectorAll(".addchip").forEach(c=>c.onclick=()=>{$("eBen").value=c.dataset.b;$("eAnt").focus();});
