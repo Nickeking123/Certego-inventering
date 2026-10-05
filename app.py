@@ -167,10 +167,15 @@ def api_photo_post():
     return cors(jsonify({"ok": True, "id": pid}))
 
 
-@app.route("/api/photo/<pid>")
+@app.route("/api/photo/<pid>", methods=["GET", "DELETE"])
 def api_photo_get(pid):
     pid = safe_id(pid)
-    if not os.path.exists(os.path.join(PHOTODIR, pid + ".jpg")):
+    _p = os.path.join(PHOTODIR, pid + ".jpg")
+    if request.method == "DELETE":
+        if os.path.exists(_p):
+            os.remove(_p)
+        return cors(jsonify({"deleted": True}))
+    if not os.path.exists(_p):
         return Response(status=404)
     return cors(send_from_directory(PHOTODIR, pid + ".jpg"))
 

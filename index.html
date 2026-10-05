@@ -110,6 +110,9 @@
   .tog.on{border-color:var(--steel);background:var(--steel-soft)}.tog.on .box{background:var(--ok);border-color:var(--ok)}
   .mk{position:absolute;transform:translate(-50%,-50%) scale(var(--mks,1));background:#37434d;color:#fff;border:2px solid #fff;border-radius:11px;font-size:10px;font-weight:700;padding:2px 5px;box-shadow:0 1px 4px rgba(0,0,0,.45);white-space:nowrap;pointer-events:none;z-index:3}
   .mk.cur{pointer-events:auto;cursor:grab}
+  .mk.tap{pointer-events:auto;cursor:pointer}
+  .mk.done{background:#1e7a46}
+  .mk.todo{background:#c0392b}
   .plview{position:relative;height:60vh;overflow:hidden;background:#eceff1;touch-action:none;user-select:none}
   .plstage{position:absolute;top:0;left:0;width:100%;transform-origin:0 0;will-change:transform}
   .plstage img{width:100%;display:block;pointer-events:none}
@@ -186,6 +189,7 @@ details.cov-details[open]>summary::after{transform:rotate(90deg)}
       <input type="file" id="ritFile" accept="image/*,.pdf" multiple hidden>
       <div id="ritResult" class="hint" style="margin-top:12px"></div>
       <div class="tools" style="margin-top:10px"><button id="ritExport">Exportera ritningar (zip)</button></div>
+      <div id="ritList" style="margin-top:14px"></div>
     </div></div>
     <div class="hint" style="margin:12px 4px;line-height:1.6">Appen hittar rubrikraden själv och mappar kolumnerna (lägenhetsnummer, hyresobjekt-id, byggnad, ingång, typ, Dörr-id m.m.). Redan inlästa objekt behåller sina enheter. Kör om när ni får nya områden.</div>
   </section>
@@ -444,9 +448,10 @@ function renderBrowse(){
   if(!arr.length){$("browse").innerHTML='<div class="empty">Inga objekt matchar filtret.</div>';return;}
   $("browse").innerHTML=arr.map(g=>{const done=g.items.filter(isDone).length,tot=g.items.length,pct=Math.round(done/tot*100),open=openGroups[g.key];
     const title=(g.bygN||("Byggnad "+g.byg))+(g.ing?(" · ing "+g.ing):"");
-    return '<div class="bgroup '+(open?'open':'')+'" data-g="'+encodeURIComponent(g.key)+'"><div class="bgh"><span class="chev">▶</span><div class="t">'+title+'<small>'+g.omr+' · '+(OMRADE[g.omr]||"")+'</small></div><div class="pr"><div class="pct">'+done+'/'+tot+' · '+pct+'%</div><div class="bar"><i style="width:'+pct+'%"></i></div></div></div><div class="objs"><button class="btn ghost bulkIng" data-g="'+encodeURIComponent(g.key)+'" style="width:100%;margin:8px 0;font-size:13px">⚡ Massinventera – välj flera</button>'+g.items.slice().sort((a,b)=>(a.lgh||a.hyres||"").localeCompare(b.lgh||b.hyres||"",'sv')).map(objRow).join("")+'</div></div>';}).join("");
+    return '<div class="bgroup '+(open?'open':'')+'" data-g="'+encodeURIComponent(g.key)+'"><div class="bgh"><span class="chev">▶</span><div class="t">'+title+'<small>'+g.omr+' · '+(OMRADE[g.omr]||"")+'</small></div><div class="pr"><div class="pct">'+done+'/'+tot+' · '+pct+'%</div><div class="bar"><i style="width:'+pct+'%"></i></div></div><button class="ritBtn" data-omr="'+g.omr+'" data-byg="'+(g.byg||"")+'" title="Visa ritning" style="flex:none;background:none;border:none;font-size:18px;cursor:pointer;padding:0 6px">🗺</button></div><div class="objs"><button class="btn ghost bulkIng" data-g="'+encodeURIComponent(g.key)+'" style="width:100%;margin:8px 0;font-size:13px">⚡ Massinventera – välj flera</button>'+g.items.slice().sort((a,b)=>(a.lgh||a.hyres||"").localeCompare(b.lgh||b.hyres||"",'sv')).map(objRow).join("")+'</div></div>';}).join("");
   $("browse").querySelectorAll(".bgroup").forEach(el=>{const gk=decodeURIComponent(el.dataset.g);
     el.querySelector(".bgh").onclick=()=>{const willOpen=!openGroups[gk];if(willOpen){openGroups={};openGroups[gk]=true;$("browse").querySelectorAll(".bgroup").forEach(x=>x.classList.remove("open"));el.classList.add("open");const p=gk.split("|");activeGroup={omr:p[0],byg:p[1],ing:p[2]};}else{openGroups[gk]=false;el.classList.remove("open");activeGroup=null;}};
+    el.querySelectorAll(".ritBtn").forEach(b=>b.onclick=ev=>{ev.stopPropagation();openRitningView(b.dataset.omr,b.dataset.byg);});
     el.querySelectorAll(".bulkIng").forEach(b=>b.onclick=ev=>{ev.stopPropagation();openBulk(decodeURIComponent(b.dataset.g));});
     el.querySelectorAll(".obj").forEach(r=>r.onclick=()=>openRecord(r.dataset.k));});
 }
@@ -482,9 +487,54 @@ async function importRitningar(files){
     }catch(e){fail.push(f.name+" (kunde inte läsas)");}
   }
   if($("ritResult"))$("ritResult").innerHTML="✓ "+ok+" ritning(ar) inlästa."+(fail.length?'<br><span style="color:var(--accent-deep)">Hoppade över: '+fail.map(esc).join(", ")+"</span>":"");
-  toast(ok+" ritningar inlästa");
+  toast(ok+" ritningar inlästa");renderRitList();
+}
+async function renderRitList(){
+  const host=$("ritList");if(!host)return;
+  const keys=(await photoKeys()).filter(k=>typeof k==="string"&&k.indexOf("RIT_")===0).sort();
+  if(!keys.length){host.innerHTML='<div class="hint" style="color:var(--muted)">Inga ritningar inlästa än.</div>';return;}
+  host.innerHTML='<div class="hint" style="margin:6px 0">'+keys.length+' ritning(ar):</div>'+keys.map(k=>'<div class="obj" style="cursor:default"><div class="oi"><div class="a">'+esc(k.replace(/^RIT_/,""))+'</div></div><button class="ritView" data-k="'+esc(k)+'" style="background:none;border:none;color:var(--accent-deep);font-size:13px;cursor:pointer;margin-left:auto">Visa</button><button class="ritDel" data-k="'+esc(k)+'" style="background:none;border:none;color:#c0392b;font-size:13px;cursor:pointer;margin-left:10px">Ta bort</button></div>').join("");
+  host.querySelectorAll(".ritDel").forEach(b=>b.onclick=()=>deleteRitning(b.dataset.k));
+  host.querySelectorAll(".ritView").forEach(b=>b.onclick=()=>{const p=b.dataset.k.replace(/^RIT_/,"").split("-");openRitningView(p[0],p[1]||"");});
+}
+async function deleteRitning(key){
+  if(!confirm("Ta bort ritningen "+key.replace(/^RIT_/,"")+"?\n\nTas bort lokalt och på servern (och därmed på alla enheter vid synk). Ersätt i stället genom att importera en ny med samma namn."))return;
+  await photoDel(key);
+  const base=(serverUrl||"").replace(/\/+$/,"");
+  try{await fetch(base+"/api/photo/"+encodeURIComponent(key),{method:"DELETE"});}catch(e){}
+  toast("Ritning borttagen");renderRitList();
+}
+async function openRitningView(omr,byg){
+  const b3=String(byg||"").padStart(3,"0");const img=await photoGet("RIT_"+omr+"-"+b3);
+  const head='<div class="gripbar"><div class="ttl">Ritning · Hus '+b3+'<small>'+omr+' · '+(OMRADE[omr]||"")+'</small></div><button id="rvClose">×</button></div>';
+  if(!img){$("sheet").innerHTML=head+'<div class="wrap"><div class="card"><div class="body"><div class="empty" style="padding:28px 14px;line-height:1.7">Ingen ritning importerad för <b>'+omr+'-'+b3+'</b>.<br><small style="color:var(--muted)">Importera en ritning döpt '+omr+'-'+b3+' under fliken Importera.</small></div></div></div></div><div class="savezone"><button class="btn primary" id="rvDone" style="flex:1">Klar</button></div>';showSheet();$("sheet").querySelector("#rvClose").onclick=closeRecord;$("sheet").querySelector("#rvDone").onclick=closeRecord;return;}
+  const lbl=x=>((x.di||"").replace(/^DI\d{4}/,"")||rowHead(x).slice(0,6));
+  const doors=objects.filter(x=>x.omr===omr&&byg3(x)===b3&&x.mark);
+  const dot=x=>'<div class="mk tap '+(isDone(x)?'done':'todo')+'" data-k="'+x.key+'" style="left:'+(x.mark.x*100)+'%;top:'+(x.mark.y*100)+'%">'+esc(lbl(x))+'</div>';
+  $("sheet").innerHTML=head+
+    '<div id="rvView" class="plview"><div id="rvStage" class="plstage"><img id="rvImg" src="'+img+'" draggable="false">'+doors.map(dot).join("")+'</div>'+
+    '<div class="plzoom"><button id="rvIn">+</button><button id="rvOut">\u2212</button><button id="rvFit">\u2922</button></div></div>'+
+    '<div class="hint" style="padding:8px 14px">'+doors.length+' placerade dörrar \u00b7 grön = klar, röd = ej klar \u00b7 tryck på en markör för att öppna dörren.</div>'+
+    '<div class="savezone"><button class="btn primary" id="rvDone" style="flex:1">Klar</button></div>';
+  showSheet();const S=$("sheet");
+  const view=S.querySelector("#rvView"),stage=S.querySelector("#rvStage");
+  let scale=1,tx=0,ty=0;function apply(){stage.style.transform="translate("+tx+"px,"+ty+"px) scale("+scale+")";stage.style.setProperty("--mks",1/scale);}apply();
+  const pts=new Map();let mode=null,sx,sy,tx0,ty0,pd0,sc0,mid0,tapKey;
+  view.addEventListener("pointerdown",e=>{try{view.setPointerCapture(e.pointerId);}catch(_){}pts.set(e.pointerId,{x:e.clientX,y:e.clientY});
+    if(pts.size===1){const mk=e.target&&e.target.closest&&e.target.closest(".mk");tapKey=mk?mk.dataset.k:null;mode="maybe";sx=e.clientX;sy=e.clientY;tx0=tx;ty0=ty;}
+    else if(pts.size===2){mode="pinch";const a=[...pts.values()];pd0=Math.hypot(a[0].x-a[1].x,a[0].y-a[1].y)||1;sc0=scale;mid0={x:(a[0].x+a[1].x)/2,y:(a[0].y+a[1].y)/2};tx0=tx;ty0=ty;}});
+  view.addEventListener("pointermove",e=>{if(!pts.has(e.pointerId))return;pts.set(e.pointerId,{x:e.clientX,y:e.clientY});
+    if(mode==="pinch"&&pts.size>=2){const a=[...pts.values()];const d=Math.hypot(a[0].x-a[1].x,a[0].y-a[1].y)||1;const mid={x:(a[0].x+a[1].x)/2,y:(a[0].y+a[1].y)/2};const ns=Math.max(1,Math.min(10,sc0*d/pd0));const vr=view.getBoundingClientRect();const mx=mid0.x-vr.left,my=mid0.y-vr.top;tx=mx-(mx-tx0)*(ns/sc0)+(mid.x-mid0.x);ty=my-(my-ty0)*(ns/sc0)+(mid.y-mid0.y);scale=ns;apply();return;}
+    const dx=e.clientX-sx,dy=e.clientY-sy;if(mode==="maybe"&&Math.abs(dx)+Math.abs(dy)>8)mode="pan";if(mode==="pan"){tx=tx0+dx;ty=ty0+dy;apply();}});
+  view.addEventListener("pointerup",e=>{if(mode==="maybe"&&tapKey){openRecord(tapKey);return;}pts.delete(e.pointerId);if(pts.size===0)mode=null;else if(mode==="pinch")mode="pan";});
+  view.addEventListener("pointercancel",e=>{pts.delete(e.pointerId);if(pts.size===0)mode=null;});
+  view.addEventListener("wheel",e=>{e.preventDefault();const vr=view.getBoundingClientRect(),mx=e.clientX-vr.left,my=e.clientY-vr.top,f=e.deltaY<0?1.15:1/1.15,ns=Math.max(1,Math.min(10,scale*f));tx=mx-(mx-tx)*(ns/scale);ty=my-(my-ty)*(ns/scale);scale=ns;apply();},{passive:false});
+  function zoomBy(f){const vr=view.getBoundingClientRect(),mx=vr.width/2,my=vr.height/2,ns=Math.max(1,Math.min(10,scale*f));tx=mx-(mx-tx)*(ns/scale);ty=my-(my-ty)*(ns/scale);scale=ns;apply();}
+  S.querySelector("#rvIn").onclick=()=>zoomBy(1.5);S.querySelector("#rvOut").onclick=()=>zoomBy(1/1.5);S.querySelector("#rvFit").onclick=()=>{scale=1;tx=0;ty=0;apply();};
+  S.querySelector("#rvClose").onclick=closeRecord;S.querySelector("#rvDone").onclick=closeRecord;
 }
 async function exportRitningar(){
+
   const keys=(await photoKeys()).filter(k=>typeof k==="string"&&k.indexOf("RIT_")===0);
   if(!keys.length){toast("Inga ritningar inlästa");return;}
   toast("Packar "+keys.length+" ritningar …");
@@ -843,7 +893,7 @@ async function syncNow(){
       const ritLocal=[...localKeys].filter(k=>typeof k==="string"&&k.indexOf("RIT_")===0);for(const id of ritLocal){if(!srvIds.has(id)){const d=await photoGet(id);if(d)await fetch(base+"/api/photo",{method:"POST",headers:{"Content-Type":"application/json"},body:JSON.stringify({id,data:d})}).catch(()=>{});}}
       const ritSrv=[...srvIds].filter(k=>typeof k==="string"&&k.indexOf("RIT_")===0);for(const id of ritSrv){if(!localKeys.has(id)){const bl=await fetch(base+"/api/photo/"+id).then(r=>r.ok?r.blob():null).catch(()=>null);if(bl){const du=await blobToDataURL(bl);if(du)await photoPut(id,du);}}}
     }catch(e){}
-    toast("Synkad mot server ✓");loadFotoAreas();
+    toast("Synkad mot server ✓");loadFotoAreas();renderRitList();
     $("syncStatus").textContent="Senaste synk: "+fmt(lastSync);
   }catch(e){toast("Ingen kontakt med servern");$("syncStatus").textContent="Synk misslyckades. Senaste lyckade: "+fmt(lastSync);}
 }
@@ -876,6 +926,7 @@ function init(){
   if($("fotoExp")){$("fotoExp").onclick=fotoExport;$("fotoDel").onclick=fotoClear;loadFotoAreas();}
   const drop=$("drop"),file=$("file");drop.onclick=()=>file.click();file.onchange=e=>{if(e.target.files[0])handleFile(e.target.files[0]);};
   if($("ritExport"))$("ritExport").onclick=exportRitningar;
+  renderRitList();
   const ritDrop=$("ritDrop"),ritFile=$("ritFile");if(ritDrop){ritDrop.onclick=()=>ritFile.click();ritFile.onchange=e=>{if(e.target.files.length)importRitningar([...e.target.files]);e.target.value="";};["dragover","dragenter"].forEach(ev=>ritDrop.addEventListener(ev,e=>{e.preventDefault();ritDrop.classList.add("hot");}));["dragleave","drop"].forEach(ev=>ritDrop.addEventListener(ev,e=>{e.preventDefault();ritDrop.classList.remove("hot");}));ritDrop.addEventListener("drop",e=>{if(e.dataTransfer.files.length)importRitningar([...e.dataTransfer.files]);});}
   ["dragover","dragenter"].forEach(ev=>drop.addEventListener(ev,e=>{e.preventDefault();drop.classList.add("hot");}));
   ["dragleave","drop"].forEach(ev=>drop.addEventListener(ev,e=>{e.preventDefault();drop.classList.remove("hot");}));
