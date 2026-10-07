@@ -36,6 +36,7 @@ from flask import Flask, request, jsonify, send_from_directory, Response
 
 ROOT = os.path.dirname(os.path.abspath(__file__))
 DATA_DIR = os.environ.get("DATA_DIR", ROOT)
+APP_CODE = os.environ.get("APP_CODE", "").strip()
 os.makedirs(DATA_DIR, exist_ok=True)
 DB = os.path.join(DATA_DIR, "certego_inventering.db")
 PHOTODIR = os.path.join(DATA_DIR, "photos")
@@ -115,9 +116,28 @@ def merge(server, inc):
 
 def cors(resp):
     resp.headers["Access-Control-Allow-Origin"] = "*"
-    resp.headers["Access-Control-Allow-Headers"] = "Content-Type"
-    resp.headers["Access-Control-Allow-Methods"] = "GET,POST,OPTIONS"
+    resp.headers["Access-Control-Allow-Headers"] = "Content-Type, X-App-Code"
+    resp.headers["Access-Control-Allow-Methods"] = "GET,POST,OPTIONS,DELETE"
     return resp
+
+
+@app.before_request
+def _gate():
+    if not APP_CODE:
+        return
+    if request.method == "OPTIONS":
+        return
+    p = request.path or ""
+    if p.startswith("/api/"):
+        if request.headers.get("X-App-Code", "") != APP_CODE:
+            r = cors(jsonify({"error": "unauthorized"}))
+            r.status_code = 401
+            return r
+
+
+@app.route("/api/auth")
+def api_auth():
+    return cors(jsonify({"ok": True}))
 
 
 @app.route("/api/sync", methods=["POST", "OPTIONS"])
