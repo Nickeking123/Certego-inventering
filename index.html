@@ -557,18 +557,88 @@ async function openRitningView(omr,byg){
   S.querySelector("#rvIn").onclick=()=>zoomBy(1.5);S.querySelector("#rvOut").onclick=()=>zoomBy(1/1.5);S.querySelector("#rvFit").onclick=()=>{scale=1;tx=0;ty=0;apply();};
   S.querySelector("#rvClose").onclick=closeRecord;S.querySelector("#rvDone").onclick=closeRecord;
 }
+// ---- Ritningsexport: liten punkt på exakt position + etikett med hänvisningslinje ----
+// Läser bara o.mark (andel 0–1 av ritningens bredd/höjd, origo uppe till vänster). Sparad data ändras aldrig här.
+function ritDoors(key){const p=key.replace(/^RIT_/,"").split("-");const omr=p[0],b3=p[1]||"";return objects.filter(x=>x.omr===omr&&byg3(x)===b3&&x.mark&&isFinite(x.mark.x)&&isFinite(x.mark.y));}
+function ritLabel(x){return x.di?String(x.di).slice(-4):(x.lgh||"");}
+// Hur "ritad" en yta är (0 = tomt papper, 1 = helsvart) – används för att lägga etiketter där ritningen är tom.
+function ritDarkMap(img,iw,ih){
+  try{
+    const mw=Math.min(900,iw),mh=Math.max(1,Math.round(ih*mw/iw)),n=mw+1;
+    const c=document.createElement("canvas");c.width=mw;c.height=mh;const g=c.getContext("2d",{willReadFrequently:true});g.drawImage(img,0,0,mw,mh);
+    const d=g.getImageData(0,0,mw,mh).data,I=new Float64Array(n*(mh+1));
+    for(let y=0;y<mh;y++){let row=0;for(let x=0;x<mw;x++){const i=(y*mw+x)*4;row+=1-(0.299*d[i]+0.587*d[i+1]+0.114*d[i+2])/255;I[(y+1)*n+x+1]=I[y*n+x+1]+row;}}
+    const cl=(v,m)=>Math.max(0,Math.min(m,v));
+    return (fx0,fy0,fx1,fy1)=>{const x0=cl(Math.floor(fx0*mw),mw),x1=cl(Math.ceil(fx1*mw),mw),y0=cl(Math.floor(fy0*mh),mh),y1=cl(Math.ceil(fy1*mh),mh);const a=(x1-x0)*(y1-y0);return a>0?(I[y1*n+x1]-I[y0*n+x1]-I[y1*n+x0]+I[y0*n+x0])/a:0;};
+  }catch(e){return ()=>0;}
+}
 async function composeRit(key){
   const data=await photoGet(key);if(!data)return null;
   const img=await new Promise((res,rej)=>{const im=new Image();im.onload=()=>res(im);im.onerror=rej;im.src=data;});
-  const cv=document.createElement("canvas");cv.width=img.naturalWidth||img.width;cv.height=img.naturalHeight||img.height;
-  const ctx=cv.getContext("2d");ctx.drawImage(img,0,0);
-  const p=key.replace(/^RIT_/,"").split("-");const omr=p[0],b3=p[1]||"";
-  const doors=objects.filter(x=>x.omr===omr&&byg3(x)===b3&&x.mark);
-  const fs=Math.max(13,Math.round(cv.width/75));ctx.font="bold "+fs+"px sans-serif";ctx.textBaseline="middle";ctx.textAlign="center";
-  doors.forEach(x=>{const lx=x.mark.x*cv.width,ly=x.mark.y*cv.height;const txt=(x.di?String(x.di).slice(-4):(x.lgh||""));const pad=fs*0.45;const w=ctx.measureText(txt).width+pad*2;const h=fs+pad*1.2;const rx=lx-w/2,ry=ly-h/2,r=h/3;
-    ctx.fillStyle=isDone(x)?"#1e7a46":"#c0392b";ctx.beginPath();ctx.moveTo(rx+r,ry);ctx.arcTo(rx+w,ry,rx+w,ry+h,r);ctx.arcTo(rx+w,ry+h,rx,ry+h,r);ctx.arcTo(rx,ry+h,rx,ry,r);ctx.arcTo(rx,ry,rx+w,ry,r);ctx.closePath();ctx.fill();
-    ctx.lineWidth=Math.max(2,fs/7);ctx.strokeStyle="#fff";ctx.stroke();ctx.fillStyle="#fff";ctx.fillText(txt,lx,ly);});
-  return cv.toDataURL("image/jpeg",0.85);
+  const iw=img.naturalWidth||img.width,ih=img.naturalHeight||img.height;
+  // Exportera i upp till dubbel upplösning: etiketterna blir små i förhållande till ritningen men lika skarpa.
+  const S=Math.max(1,Math.min(2,Math.sqrt(16000000/(iw*ih))));
+  const cv=document.createElement("canvas");cv.width=Math.round(iw*S);cv.height=Math.round(ih*S);
+  const W=cv.width,H=cv.height,ctx=cv.getContext("2d");
+  ctx.imageSmoothingEnabled=true;ctx.imageSmoothingQuality="high";ctx.drawImage(img,0,0,W,H);
+  const doors=ritDoors(key);
+  if(!doors.length)return cv.toDataURL("image/jpeg",0.88);
+  const pts=doors.map(x=>({o:x,x:x.mark.x*W,y:x.mark.y*H,txt:ritLabel(x)}));
+  pts.forEach(p=>{let d=Infinity;pts.forEach(q=>{if(q!==p){const dd=Math.hypot(p.x-q.x,p.y-q.y);if(dd<d)d=dd;}});p.nn=d;});
+  // Textstorlek efter hur tätt dörrarna sitter (15:e percentilen av avståndet till närmaste granne), inom läsbara gränser.
+  const nn=pts.map(p=>p.nn).filter(isFinite).sort((a,b)=>a-b);
+  const L=Math.max(W,H),fsMin=Math.max(14,L/200),fsMax=L/110,dRef=nn.length?nn[Math.floor(nn.length*0.15)]:Infinity;
+  const fs=Math.round(Math.max(fsMin,Math.min(fsMax,dRef/3.6)));
+  const pad=fs*0.38,lh=Math.round(fs+pad*1.3),rr=Math.max(4,fs*0.3),lw=Math.max(2,fs/9),m=fs*0.15;
+  ctx.font="bold "+fs+"px sans-serif";ctx.textBaseline="middle";ctx.textAlign="center";
+  pts.forEach(p=>{p.w=Math.ceil(ctx.measureText(p.txt||"?").width+pad*2);p.h=lh;});
+  const dark=ritDarkMap(img,iw,ih);
+  const clamp=(v,a,b)=>Math.max(a,Math.min(b,v));
+  const rectHit=(a,b)=>a.x0<b.x1+m&&a.x1>b.x0-m&&a.y0<b.y1+m&&a.y1>b.y0-m;
+  const overlap=(a,b)=>Math.max(0,Math.min(a.x1,b.x1)-Math.max(a.x0,b.x0))*Math.max(0,Math.min(a.y1,b.y1)-Math.max(a.y0,b.y0));
+  const segHit=(s,r)=>{let t0=0,t1=1;const dx=s.x1-s.x0,dy=s.y1-s.y0;const P=[-dx,dx,-dy,dy],Q=[s.x0-(r.x0-m),(r.x1+m)-s.x0,s.y0-(r.y0-m),(r.y1+m)-s.y0];
+    for(let i=0;i<4;i++){if(P[i]===0){if(Q[i]<0)return false;}else{const t=Q[i]/P[i];if(P[i]<0){if(t>t1)return false;if(t>t0)t0=t;}else{if(t<t0)return false;if(t<t1)t1=t;}}}return true;};
+  const ANG=[-45,-135,45,135,0,180,-90,90,-22.5,-157.5,22.5,157.5,-67.5,-112.5,67.5,112.5].map(a=>a*Math.PI/180);
+  const placed=[],segs=[];
+  const place=(p,strict)=>{let best=null;
+    for(let ring=0;ring<(strict?12:6);ring++){const gap=rr+fs*0.55+ring*lh*0.75;
+      for(let ai=0;ai<ANG.length;ai++){
+        const cx=p.x+Math.cos(ANG[ai])*(p.w/2+gap),cy=p.y+Math.sin(ANG[ai])*(p.h/2+gap);
+        const r={x0:cx-p.w/2,y0:cy-p.h/2,x1:cx+p.w/2,y1:cy+p.h/2};
+        if(r.x0<2||r.y0<2||r.x1>W-2||r.y1>H-2)continue;
+        const ax=clamp(p.x,r.x0,r.x1),ay=clamp(p.y,r.y0,r.y1),seg={x0:p.x,y0:p.y,x1:ax,y1:ay};
+        const dots=pts.filter(q=>q!==p&&q.x>r.x0-rr-m&&q.x<r.x1+rr+m&&q.y>r.y0-rr-m&&q.y<r.y1+rr+m).length;
+        let cost=dark(r.x0/W,r.y0/H,r.x1/W,r.y1/H)*45+ring+ai*0.03;
+        if(strict){if(dots||placed.some(q=>rectHit(r,q))||segs.some(s=>segHit(s,r))||placed.some(q=>segHit(seg,q)))continue;}
+        else{cost+=dots*25+placed.reduce((s,q)=>s+overlap(r,q),0)/(p.w*p.h)*60;}
+        if(!best||cost<best.cost)best={r,seg,cost};
+      }
+      if(strict&&best&&best.cost<=ring+1)break;
+    }
+    return best;};
+  pts.slice().sort((a,b)=>a.nn-b.nn||a.y-b.y||a.x-b.x).forEach(p=>{if(!p.txt)return;
+    let b=place(p,true)||place(p,false);
+    if(!b){const cx=clamp(p.x,p.w/2+2,W-p.w/2-2),cy=clamp(p.y-p.h,p.h/2+2,H-p.h/2-2);const r={x0:cx-p.w/2,y0:cy-p.h/2,x1:cx+p.w/2,y1:cy+p.h/2};b={r,seg:{x0:p.x,y0:p.y,x1:clamp(p.x,r.x0,r.x1),y1:clamp(p.y,r.y0,r.y1)}};}
+    p.lab=b.r;p.seg=b.seg;placed.push(b.r);segs.push(b.seg);});
+  const col=p=>isDone(p.o)?"#1e7a46":"#c0392b";
+  ctx.lineCap="round";
+  const line=(s,c,w)=>{ctx.strokeStyle=c;ctx.lineWidth=w;ctx.beginPath();ctx.moveTo(s.x0,s.y0);ctx.lineTo(s.x1,s.y1);ctx.stroke();};
+  pts.forEach(p=>{if(p.seg&&Math.hypot(p.seg.x1-p.seg.x0,p.seg.y1-p.seg.y0)>rr*1.2)line(p.seg,"#fff",lw*2.6);});
+  pts.forEach(p=>{if(p.seg&&Math.hypot(p.seg.x1-p.seg.x0,p.seg.y1-p.seg.y0)>rr*1.2)line(p.seg,col(p),lw);});
+  pts.forEach(p=>{ctx.beginPath();ctx.arc(p.x,p.y,rr,0,Math.PI*2);ctx.fillStyle=col(p);ctx.fill();ctx.lineWidth=lw;ctx.strokeStyle="#fff";ctx.stroke();});
+  pts.forEach(p=>{if(!p.lab)return;const r=p.lab,w=r.x1-r.x0,h=r.y1-r.y0,q=h/3;
+    ctx.fillStyle=col(p);ctx.beginPath();ctx.moveTo(r.x0+q,r.y0);ctx.arcTo(r.x1,r.y0,r.x1,r.y1,q);ctx.arcTo(r.x1,r.y1,r.x0,r.y1,q);ctx.arcTo(r.x0,r.y1,r.x0,r.y0,q);ctx.arcTo(r.x0,r.y0,r.x1,r.y0,q);ctx.closePath();ctx.fill();
+    ctx.lineWidth=lw;ctx.strokeStyle="#fff";ctx.stroke();ctx.fillStyle="#fff";ctx.fillText(p.txt,r.x0+w/2,r.y0+h/2+fs*0.04);});
+  return cv.toDataURL("image/jpeg",0.88);
+}
+// Dörr-id + position per ritning, i samma form som Fieldwire-verktyget: procent av bredd/höjd, origo uppe till vänster.
+function ritPositionSheets(keys){
+  const head=["Dörr-id","X (%)","Y (%)","Etikett på ritning","Benämning","Lägenhet","Hyresobjekt","Enheter (Dörr-id)","Klar"];
+  const pct=v=>Math.round(v*10000)/100,per={},all=[["Ritning"].concat(head)];
+  keys.slice().sort().forEach(k=>{const name=k.replace(/^RIT_/,"");
+    const rows=ritDoors(k).slice().sort((a,b)=>String(a.di||a.lgh||"").localeCompare(String(b.di||b.lgh||""),'sv')).map(x=>[x.di||"",pct(x.mark.x),pct(x.mark.y),ritLabel(x),benLabel(x),x.lgh||"",x.hyres||"",(x.components||[]).map(c=>(x.di||"")+"-"+c.suffix).join(" | "),isDone(x)?"Ja":"Nej"]);
+    if(!rows.length)return;per[name]=[head].concat(rows);rows.forEach(r=>all.push([name].concat(r)));});
+  return {all,per};
 }
 async function exportRitningar(){
 
@@ -579,6 +649,11 @@ async function exportRitningar(){
     if(!window.JSZip)await loadScript("https://cdnjs.cloudflare.com/ajax/libs/jszip/3.10.1/jszip.min.js");
     const zip=new JSZip();
     for(const k of keys){let d=null;try{d=await composeRit(k);}catch(e){d=await photoGet(k);}if(!d||d.indexOf(",")<0)continue;zip.file(k.replace(/^RIT_/,"")+".jpg",d.split(",")[1],{base64:true});}
+    const pos=ritPositionSheets(keys);
+    if(pos.all.length>1){
+      if(window.XLSX){const wb=XLSX.utils.book_new();XLSX.utils.book_append_sheet(wb,XLSX.utils.aoa_to_sheet(pos.all),"Alla");Object.keys(pos.per).forEach(n=>XLSX.utils.book_append_sheet(wb,XLSX.utils.aoa_to_sheet(pos.per[n]),n.slice(0,31)));zip.file("dorrpositioner.xlsx",XLSX.write(wb,{type:"base64",bookType:"xlsx"}),{base64:true});}
+      else zip.file("dorrpositioner.csv","\uFEFF"+pos.all.map(r=>r.map(cc).join(";")).join("\r\n"));
+    }
     const blob=await zip.generateAsync({type:"blob"});const url=URL.createObjectURL(blob);const a=document.createElement("a");a.href=url;a.download="ritningar_"+stamp()+".zip";document.body.appendChild(a);a.click();a.remove();setTimeout(()=>URL.revokeObjectURL(url),3000);
     toast(keys.length+" ritningar exporterade");
   }catch(e){toast("Kunde inte exportera ritningar");}
@@ -755,18 +830,25 @@ function cc(v){v=(v==null?"":String(v));return /[;"\n]/.test(v)?'"'+v.replace(/"
 function esc(s){return String(s==null?"":s).replace(/"/g,"&quot;");}
 function stamp(){return new Date().toISOString().slice(0,16).replace(/[:T]/g,"-");}
 function tillbStr(o){return TOGS.filter(t=>o[t[0]]).map(t=>t[1]).concat(o.tillbeharFri||[]).filter(Boolean).join(", ");}
+// Adress för en byggnad/ingång, hämtad ur de importerade objekten (ingångens benämning i första hand, annars byggnadens).
+function addrFor(omr,byg,ing){
+  let bn="",inn="";
+  for(const o of objects){if(o.omr!==omr||(o.byg||"")!==(byg||"")||(o.ing||"")!==(ing||""))continue;
+    if(!inn&&o.ingN)inn=String(o.ingN).trim();if(!bn&&o.bygN)bn=String(o.bygN).trim();if(inn&&bn)break;}
+  return inn.length>3?inn:(bn||inn);
+}
 function fillBygIng(){
   const omr=$("eOmr").value.trim().padStart(4,"0");
   const set=new Set();objects.forEach(o=>{if(o.omr===omr)set.add((o.byg||"")+"|"+(o.ing||""));});
   const opts=[...set].sort();
-  $("eBygIng").innerHTML='<option value="">— hela området —</option>'+opts.map(bi=>{const p=bi.split("|");return '<option value="'+bi+'">Byggnad '+(p[0]||'?')+(p[1]?(' · ing '+p[1]):'')+'</option>';}).join("");
+  $("eBygIng").innerHTML='<option value="">— hela området —</option>'+opts.map(bi=>{const p=bi.split("|");const ad=addrFor(omr,p[0],p[1]);return '<option value="'+esc(bi)+'">Byggnad '+esc(p[0]||'?')+(p[1]?(' · ing '+esc(p[1])):'')+(ad?(' — '+esc(ad)):'')+'</option>';}).join("");
 }
 function renderEquip(){
   const host=$("equipList");if(!host)return;
   if(!equip.length){host.innerHTML='<div class="empty">Ingen utrustning registrerad än.</div>';return;}
   const g={};equip.forEach(e=>{const k=e.omr+"|"+(e.byg||"")+"|"+(e.ing||"");(g[k]=g[k]||{omr:e.omr,byg:e.byg,ing:e.ing,items:[]}).items.push(e);});
   const arr=Object.values(g).sort((a,b)=>(a.omr+(a.byg||"")+(a.ing||"")).localeCompare(b.omr+(b.byg||"")+(b.ing||""),'sv'));
-  host.innerHTML=arr.map(gr=>{const tot=gr.items.reduce((s,e)=>s+(+e.antal||0),0);const ttl=gr.byg?('Byggnad '+gr.byg+(gr.ing?(' · ing '+gr.ing):'')):'Hela området';
+  host.innerHTML=arr.map(gr=>{const tot=gr.items.reduce((s,e)=>s+(+e.antal||0),0);const ad=gr.byg?addrFor(gr.omr,gr.byg,gr.ing):"";const ttl=gr.byg?('Byggnad '+esc(gr.byg)+(gr.ing?(' · ing '+esc(gr.ing)):'')+(ad?(' — '+esc(ad)):'')):'Hela området';
     return '<div class="bgroup open"><div class="bgh"><div class="t">'+ttl+'<small>'+gr.omr+' · '+(OMRADE[gr.omr]||'')+' · '+tot+' st</small></div></div><div class="objs">'+gr.items.map(e=>'<div class="obj" style="cursor:default;flex-wrap:wrap"><div class="oi"><div class="a">'+esc(e.ben)+((e.photos&&e.photos.length)?' <span class="badge" style="background:#e2f0e8;color:#1e7a46">📷'+e.photos.length+'</span>':'')+'</div></div><span class="di">×'+(e.antal||1)+'</span><button class="ecam" data-k="'+e.key+'" style="background:none;border:none;font-size:19px;cursor:pointer;margin-left:6px">📷</button><button class="rm" data-k="'+e.key+'" style="background:none;border:none;font-size:20px;color:var(--muted);cursor:pointer;margin-left:2px">×</button><div class="eqph" data-k="'+e.key+'" style="display:flex;gap:6px;width:100%;margin-top:6px"></div></div>').join('')+'</div></div>';}).join("");
   host.querySelectorAll(".rm").forEach(b=>b.onclick=()=>{equip=equip.filter(x=>x.key!==b.dataset.k);saveEquip();renderEquip();toast("Borttaget");});
   host.querySelectorAll(".ecam").forEach(b=>b.onclick=()=>{eqPhotoTarget=b.dataset.k;$("eqPhotoInput").click();});

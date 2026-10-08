@@ -1,0 +1,40 @@
+CERTEGO INVENTERING – lokal installation
+=================================
+
+Innehåll i mappen:
+  index.html, sw.js, manifest.webmanifest, icon-*.png  – själva appen (PWA)
+  serve.py   – kör appen lokalt på din dator (data per webbläsare, ingen delning)
+  app.py     – kör appen som lokal SERVER med delad data + synk (flera enheter)
+
+----------------------------------------------------------------
+ALTERNATIV 1 – snabbt på egen dator (ingen delning)
+----------------------------------------------------------------
+  python serve.py
+  -> öppnas på http://localhost:8000
+Data sparas i din webbläsare. Bra för att prova och för enanvändning.
+
+----------------------------------------------------------------
+ALTERNATIV 2 – delad data mellan flera (rekommenderas)
+----------------------------------------------------------------
+  pip install flask        (en gång)
+  python app.py
+  -> öppnas på http://localhost:8000
+  -> delad data sparas i filen certego_inventering.db (säkerhetskopia = kopiera filen)
+
+Så synkar man:
+  1. Jobba som vanligt i appen – funkar offline.
+  2. Gå till fliken Översikt -> "Server & synk".
+  3. Lämna serveradressen TOM om appen öppnats från servern
+     (annars skriv serverns adress, t.ex. https://las.internt.certego.se).
+  4. Tryck "Synka mot server". Din data skickas upp, slås ihop med serverns,
+     och allas data kommer tillbaka. Nyaste ändring vinner per objekt;
+     Dörr-id reserveras och återanvänds aldrig.
+
+----------------------------------------------------------------
+TELEFONER + OFFLINE = kräver https
+----------------------------------------------------------------
+Offline-/installationsläget (PWA) kräver https ELLER localhost.
+- På din egen dator (localhost): allt funkar direkt.
+- För telefoner över nätverket: kör servern bakom https (internt certifikat
+  via IT, eller verktyg som Caddy/mkcert). Över vanlig http fungerar synk,
+  men inte offline-installation på telefonen.
