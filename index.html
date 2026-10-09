@@ -120,6 +120,24 @@
   .mk.tap{pointer-events:auto;cursor:pointer}
   .mk.done{background:#1e7a46}
   .mk.todo{background:#c0392b}
+  .mk.other{background:#d9822b!important;border-style:dashed}
+  .ritrow{display:flex;gap:12px;align-items:flex-start;padding:12px 4px;border-top:1px solid var(--line-soft)}
+  .ritrow .th{flex:none;width:84px;height:64px;border:1px solid var(--line);border-radius:8px;background:#fff center/contain no-repeat;cursor:pointer}
+  .ritrow .inf{flex:1;min-width:0}
+  .ritrow .nm{font-family:var(--mono);font-weight:700;font-size:14px}.ritrow .nm .on{font-family:var(--body);font-weight:500;color:var(--muted);font-size:13px}
+  .ritrow .sub{font-size:12.5px;color:var(--muted);margin-top:3px;line-height:1.45;overflow-wrap:anywhere}
+  .ritst{display:inline-block;font-size:11.5px;font-weight:700;border-radius:5px;padding:2px 7px;margin-top:6px}
+  .ritst.ok{background:#e2f0e8;color:#1e7a46}.ritst.wait{background:#eef1f4;color:var(--steel)}.ritst.warn{background:#fdecdc;color:#a14b0c}
+  .ritact{display:flex;flex-wrap:wrap;gap:6px;margin-top:8px}
+  .ritact button{font-size:12.5px;font-weight:600;border:1.5px solid var(--line);background:#fff;border-radius:8px;padding:6px 10px;cursor:pointer;color:var(--steel)}
+  .ritact button.warn{border-color:#f0b58a;color:#a14b0c}.ritact button.del{color:#c0392b;border-color:#e7c3b5}
+  .ritwarn{margin-top:10px;background:#fdecdc;border:1px solid #f0b58a;border-radius:10px;padding:10px 12px;font-size:13.5px;line-height:1.5}
+  .ritask{position:fixed;inset:0;z-index:95;background:rgba(20,28,34,.6);display:flex;align-items:center;justify-content:center;padding:16px}
+  .ritask .box{background:var(--bg);border-radius:14px;max-width:760px;width:100%;max-height:92vh;overflow:auto;padding:16px}
+  .ritask .cmp{display:grid;grid-template-columns:1fr 1fr;gap:10px;margin:12px 0}
+  .ritask .cmp img{width:100%;max-height:42vh;object-fit:contain;border:1px solid var(--line);border-radius:8px;background:#fff;margin-top:4px}
+  .ritask .cap{font-size:12px;color:var(--muted);margin-top:4px;overflow-wrap:anywhere}
+  .ritask .btns{display:flex;gap:10px;margin-top:12px}
   .plview{position:relative;height:60vh;overflow:hidden;background:#eceff1;touch-action:none;user-select:none}
   .plstage{position:absolute;top:0;left:0;width:100%;transform-origin:0 0;will-change:transform}
   .plstage img{width:100%;display:block;pointer-events:none}
@@ -194,6 +212,7 @@ details.cov-details[open]>summary::after{transform:rotate(90deg)}
     <div class="card"><div class="body">
       <div class="drop" id="ritDrop"><div class="big">Välj ritningar</div><div class="sub">Bild (PNG/JPG) eller PDF, döpt efter område-husnummer, t.ex. 0652-001. Flera filer går bra.</div></div>
       <input type="file" id="ritFile" accept="image/*,.pdf" multiple hidden>
+      <input type="file" id="ritReplaceFile" accept="image/*,.pdf" hidden>
       <div id="ritResult" class="hint" style="margin-top:12px"></div>
       <div class="tools" style="margin-top:10px"><button id="ritExport">Exportera ritningar (zip)</button></div>
       <div id="ritList" style="margin-top:14px"></div>
@@ -311,6 +330,7 @@ async function load(){
   try{appCode=(await store.get("uh_appcode"))||"";}catch(e){}
   try{lastSync=(await store.get("uh_lastsync"))||"";}catch(e){}
   try{const eq=await store.get("uh_equip_v3");if(eq)equip=JSON.parse(eq);}catch(e){}
+  try{const rm=await store.get("uh_ritmeta");if(rm)ritMeta=JSON.parse(rm)||{};}catch(e){}
   let changed=false;objects.forEach(o=>{if(o.di&&!/^DI\d/i.test(o.di)){o.di="";o.diAssigned=false;changed=true;}});
   if(changed)persist();
 }
@@ -497,48 +517,247 @@ async function pdfFirstPageDataURL(file){
   return cv.toDataURL("image/jpeg",0.82);
 }
 function parseRitName(name){const b=name.replace(/\.[^.]+$/,"");const m=b.match(/(\d{4})\D{0,3}(\d{1,3})/);return m?(m[1]+"-"+m[2].padStart(3,"0")):null;}
-async function importRitningar(files){
-  if($("ritResult"))$("ritResult").textContent="Läser ritningar …";
-  let ok=0;const fail=[];
-  for(const f of files){
-    const key=parseRitName(f.name);
-    if(!key){fail.push(f.name+" (döp som område-husnummer, t.ex. 0652-001)");continue;}
-    try{
-      let data;
-      if(/\.pdf$/i.test(f.name)||f.type==="application/pdf"){data=await pdfFirstPageDataURL(f);}
-      else{data=await compressImage(f,2200,0.82);}
-      await photoPut("RIT_"+key,data);ok++;
-    }catch(e){fail.push(f.name+" (kunde inte läsas)");}
+// ===== Ritningar: versionskontroll, överblick och skydd mot dubbletter =====
+// ritMeta finns bara på den här enheten och synkas inte. Per ritning:
+//   file/date  – originalfil och när den importerades
+//   sha        – fingeravtryck av bilden som ligger på enheten
+//   seen       – serverns fingeravtryck vid senaste lyckade synk
+//   pending    – "new"/"replace": ska skickas till servern vid nästa synk
+//   conflict   – enhetens bild skiljer sig från serverns och ingen vet vilken som gäller → användaren väljer
+let ritMeta={};let ritServer=null;let ritFilter="";let ritReplaceKey=null;
+function saveRitMeta(){store.set("uh_ritmeta",JSON.stringify(ritMeta));}
+function htm(s){return String(s==null?"":s).replace(/[&<>"]/g,c=>({"&":"&amp;","<":"&lt;",">":"&gt;",'"':"&quot;"}[c]));}
+function ritBase(){return (serverUrl||"").replace(/\/+$/,"");}
+function ritKeyParts(k){const p=k.replace(/^RIT_/,"").split("-");return {omr:p[0],b3:p[1]||""};}
+function ritObjects(k){const p=ritKeyParts(k);return objects.filter(x=>x.omr===p.omr&&byg3(x)===p.b3);}
+function ritAddr(k){const o=ritObjects(k).find(x=>x.bygN);return o?o.bygN:"";}
+async function shaOfDataURL(d){
+  try{
+    if(!d||d.indexOf(",")<0||!(window.crypto&&crypto.subtle))return "";
+    const b=atob(d.slice(d.indexOf(",")+1));const u=new Uint8Array(b.length);for(let i=0;i<b.length;i++)u[i]=b.charCodeAt(i);
+    const h=new Uint8Array(await crypto.subtle.digest("SHA-256",u));let s="";for(let i=0;i<8;i++)s+=h[i].toString(16).padStart(2,"0");return s;
+  }catch(e){return "";}
+}
+async function ritLocalSha(k){const m=ritMeta[k]=ritMeta[k]||{};if(m.sha)return m.sha;const d=await photoGet(k);const s=d?await shaOfDataURL(d):"";if(s){m.sha=s;saveRitMeta();}return s;}
+function makeThumb(d,px){return new Promise(res=>{const im=new Image();im.onload=()=>{const sc=Math.min(1,px/Math.max(im.width,im.height));const c=document.createElement("canvas");c.width=Math.max(1,Math.round(im.width*sc));c.height=Math.max(1,Math.round(im.height*sc));const g=c.getContext("2d");g.fillStyle="#fff";g.fillRect(0,0,c.width,c.height);g.drawImage(im,0,0,c.width,c.height);res(c.toDataURL("image/jpeg",0.7));};im.onerror=()=>res(null);im.src=d;});}
+async function ritThumb(k){
+  const m=ritMeta[k]=ritMeta[k]||{};const sha=await ritLocalSha(k);
+  let t=await photoGet("THUMB_"+k);if(t&&sha&&m.thumbSha===sha)return t;
+  const d=await photoGet(k);if(!d)return null;t=await makeThumb(d,240);
+  if(t){await photoPut("THUMB_"+k,t);m.thumbSha=sha;saveRitMeta();}return t;
+}
+async function ritFetchInfo(){
+  try{const r=await fetch(ritBase()+"/api/ritinfo",{cache:"no-store"});if(!r.ok)return null;const j=await r.json();ritServer=(j&&typeof j==="object")?j:null;return ritServer;}catch(e){return null;}
+}
+async function ritFetchServerImage(k,sha,ver){
+  try{
+    const u=ritBase()+(ver?("/api/ritarkiv/"+encodeURIComponent(k)+"/"+encodeURIComponent(ver)):("/api/photo/"+encodeURIComponent(k)))+"?v="+encodeURIComponent(sha||String(Date.now()));
+    const r=await fetch(u,{cache:"no-store"});if(!r.ok)return null;return await blobToDataURL(await r.blob());
+  }catch(e){return null;}
+}
+async function ritDownload(k,s){
+  const d=await ritFetchServerImage(k,s.sha);if(!d)return false;
+  await photoPut(k,d);const sha=(await shaOfDataURL(d))||s.sha;const sm=s.meta||{};
+  ritMeta[k]={file:sm.fil||"",date:sm.importerad||sm.uppladdad||"",sha,seen:s.sha};saveRitMeta();return true;
+}
+async function ritPost(k,body){
+  try{return await fetch(ritBase()+"/api/photo",{method:"POST",headers:{"Content-Type":"application/json"},body:JSON.stringify(Object.assign({id:k},body))});}catch(e){return null;}
+}
+// Synk av ritningar. Skriver aldrig över en ritning på enheten om det är oklart vilken version som gäller.
+async function syncRitningar(){
+  const base=ritBase();
+  const localSet=new Set((await photoKeys()).filter(k=>typeof k==="string"&&k.indexOf("RIT_")===0));
+  const info=await ritFetchInfo();
+  if(!info){
+    // Äldre server (eller ingen kontakt): samma beteende som tidigare – bara saknade ritningar flyttas.
+    let ids=null;try{const r=await fetch(base+"/api/photos");if(r.ok)ids=new Set(((await r.json()).ids)||[]);}catch(e){}
+    if(!ids)return false;
+    for(const id of localSet){if(!ids.has(id)){const d=await photoGet(id);if(d)await ritPost(id,{data:d});}}
+    for(const id of ids){if(typeof id==="string"&&id.indexOf("RIT_")===0&&!localSet.has(id)){const d=await ritFetchServerImage(id,"");if(d)await photoPut(id,d);}}
+    return false;
   }
-  if($("ritResult"))$("ritResult").innerHTML="✓ "+ok+" ritning(ar) inlästa."+(fail.length?'<br><span style="color:var(--accent-deep)">Hoppade över: '+fail.map(esc).join(", ")+"</span>":"");
-  toast(ok+" ritningar inlästa");renderRitList();
+  for(const k of localSet){
+    const m=ritMeta[k]=ritMeta[k]||{};const s=info[k];const lsha=await ritLocalSha(k);
+    if(!s&&!m.pending&&m.seen&&m.seen===lsha){await photoDel(k);await photoDel("THUMB_"+k);delete ritMeta[k];continue;} // borttagen på en annan enhet (finns i serverns arkiv)
+    if(m.pending||!s){
+      const d=await photoGet(k);if(!d)continue;
+      const r=await ritPost(k,{data:d,replace:m.pending==="replace",meta:{fil:m.file||"",importerad:m.date||""}});
+      if(r&&r.ok){const j=await r.json().catch(()=>({}));m.seen=j.sha||lsha;delete m.pending;delete m.conflict;}
+      else if(r&&r.status===409){delete m.pending;m.conflict=true;}
+      continue;
+    }
+    if(!lsha)continue; // ingen versionskontroll möjlig i den här webbläsaren (kräver https)
+    if(s.sha===lsha){m.seen=s.sha;delete m.conflict;continue;}
+    if(m.seen&&m.seen===lsha&&!m.conflict){await ritDownload(k,s);continue;} // ersatt på en annan enhet → hämta
+    m.conflict=true;
+  }
+  for(const k of Object.keys(info)){if(!localSet.has(k))await ritDownload(k,info[k]);}
+  saveRitMeta();await ritFetchInfo();return true;
+}
+// Liten dialog utanför bladet (påverkar inte bakåtknappen). Returnerar värdet för knappen som trycktes.
+function ritAsk(html,buttons){
+  return new Promise(res=>{const ov=document.createElement("div");ov.className="ritask";
+    ov.innerHTML='<div class="box">'+html+'<div class="btns">'+buttons.map((b,i)=>'<button class="btn '+(b.primary?'primary':'ghost')+'" data-i="'+i+'" style="flex:1">'+htm(b.label)+'</button>').join("")+'</div></div>';
+    document.body.appendChild(ov);ov.querySelectorAll("button[data-i]").forEach(bt=>bt.onclick=()=>{ov.remove();res(buttons[+bt.dataset.i].value);});});
+}
+function ritFmt(iso){return iso?fmt(iso):"okänt datum";}
+async function ritPrepare(f){if(/\.pdf$/i.test(f.name)||f.type==="application/pdf")return await pdfFirstPageDataURL(f);return await compressImage(f,2200,0.82);}
+async function importRitningar(files,forceKey){
+  const res=$("ritResult");if(res)res.textContent="Läser ritningar …";
+  const groups={},fail=[];
+  for(const f of files){const key=forceKey||parseRitName(f.name);if(!key){fail.push(f.name+" (döp som område-husnummer, t.ex. 0652-001)");continue;}(groups[key]=groups[key]||[]).push(f);}
+  Object.keys(groups).forEach(k=>{if(groups[k].length>1){fail.push(groups[k].map(f=>f.name).join(" + ")+" blir alla "+k+" – ingen av dem importerades, välj rätt fil och importera den för sig");delete groups[k];}});
+  const localSet=new Set((await photoKeys()).filter(k=>typeof k==="string"&&k.indexOf("RIT_")===0));
+  const srv=await ritFetchInfo();
+  let added=0,replaced=0,same=0,kept=0;
+  for(const key of Object.keys(groups).sort()){
+    const f=groups[key][0],rk="RIT_"+key;let data;
+    try{data=await ritPrepare(f);}catch(e){fail.push(f.name+" (kunde inte läsas)");continue;}
+    const sha=await shaOfDataURL(data);
+    const hasLocal=localSet.has(rk),hasSrv=!!(srv&&srv[rk]);
+    if(hasLocal||hasSrv){
+      const curSha=hasLocal?await ritLocalSha(rk):srv[rk].sha;
+      if(sha&&curSha&&sha===curSha){same++;continue;}
+      const curData=hasLocal?await photoGet(rk):await ritFetchServerImage(rk,srv[rk].sha);
+      const m=ritMeta[rk]||{},sm=(hasSrv&&srv[rk].meta)||{};
+      const placed=ritObjects(rk).filter(x=>x.mark).length;
+      const ok=await ritAsk(
+        '<div style="font-family:var(--disp);font-weight:700;font-size:17px">Ritning '+htm(key)+' finns redan</div>'+
+        '<div class="hint" style="margin-top:4px">'+htm(OMRADE[key.slice(0,4)]||"")+(ritAddr(rk)?' · '+htm(ritAddr(rk)):'')+'</div>'+
+        (placed?'<div class="ritwarn"><b>'+placed+' dörrar är placerade på nuvarande ritning.</b> Placeringarna ligger kvar på samma ställe i bilden – ser den nya ritningen annorlunda ut hamnar de fel.</div>':'')+
+        '<div class="cmp"><div><b style="font-size:13px">Nuvarande</b>'+(curData?'<img src="'+curData+'">':'<div class="empty" style="margin:6px 0;padding:20px 8px">Kunde inte visas</div>')+'<div class="cap">'+htm(m.file||sm.fil||"okänd fil")+' · '+htm(ritFmt(m.date||sm.importerad||sm.uppladdad))+'</div></div>'+
+        '<div><b style="font-size:13px">Ny fil</b><img src="'+data+'"><div class="cap">'+htm(f.name)+'</div></div></div>'+
+        '<div class="hint">Ersätter du sparas den nuvarande ritningen i serverns arkiv och kan återställas.</div>',
+        [{label:"Behåll nuvarande",value:false},{label:"Ersätt",value:true,primary:true}]);
+      if(!ok){kept++;continue;}
+      replaced++;
+    }else added++;
+    await photoPut(rk,data);
+    const prev=ritMeta[rk]||{};
+    ritMeta[rk]={file:f.name,date:new Date().toISOString(),sha,seen:prev.seen||"",pending:(hasLocal||hasSrv)?"replace":"new"};
+    saveRitMeta();
+  }
+  const parts=[];if(added)parts.push(added+" nya");if(replaced)parts.push(replaced+" ersatta");if(same)parts.push(same+" identiska (redan inlästa)");if(kept)parts.push(kept+" behölls oförändrade");
+  if(res)res.innerHTML=(parts.length?"✓ "+htm(parts.join(", "))+".":"Inget importerades.")+(fail.length?'<br><span style="color:var(--accent-deep)">Hoppade över: '+fail.map(htm).join("; ")+"</span>":"");
+  toast(parts.length?parts.join(", "):"Inget importerades");
+  if(added||replaced){await syncRitningar();} // skicka direkt så att andra enheter inte fortsätter på en gammal ritning
+  renderRitList();
+}
+async function deleteRitning(key){
+  const placed=ritObjects(key).filter(x=>x.mark).length;
+  const ok=await ritAsk('<div style="font-family:var(--disp);font-weight:700;font-size:17px">Ta bort ritning '+htm(key.replace(/^RIT_/,""))+'?</div>'+
+    (placed?'<div class="ritwarn"><b>'+placed+' dörrar är placerade på ritningen.</b> Placeringarna finns kvar på dörrarna.</div>':'')+
+    '<div class="hint" style="margin-top:10px">Tas bort på alla enheter vid synk. Ritningen sparas i serverns arkiv och kan återställas.</div>',
+    [{label:"Avbryt",value:false},{label:"Ta bort",value:true,primary:true}]);
+  if(!ok)return;
+  let r=null;try{r=await fetch(ritBase()+"/api/photo/"+encodeURIComponent(key),{method:"DELETE"});}catch(e){}
+  if(!r||!r.ok){toast("Ingen kontakt med servern – ritningen togs inte bort");return;}
+  await photoDel(key);await photoDel("THUMB_"+key);delete ritMeta[key];saveRitMeta();await ritFetchInfo();
+  toast("Ritning borttagen (sparad i arkivet)");renderRitList();
+}
+async function ritUseMine(k){
+  const ok=await ritAsk('<div style="font-family:var(--disp);font-weight:700;font-size:17px">Använd den här enhetens '+htm(k.replace(/^RIT_/,""))+' för alla?</div><div class="hint" style="margin-top:8px">Serverns version sparas i arkivet. Övriga enheter får den här versionen vid nästa synk.</div>',[{label:"Avbryt",value:false},{label:"Använd min",value:true,primary:true}]);
+  if(!ok)return;const m=ritMeta[k]=ritMeta[k]||{};m.pending="replace";delete m.conflict;saveRitMeta();
+  await syncRitningar();toast(ritMeta[k]&&ritMeta[k].pending?"Ingen kontakt – skickas vid nästa synk":"Din version gäller nu för alla");renderRitList();
+}
+async function ritUseServer(k){
+  const s=ritServer&&ritServer[k];if(!s){toast("Ingen kontakt med servern");return;}
+  const ok=await ritAsk('<div style="font-family:var(--disp);font-weight:700;font-size:17px">Hämta serverns '+htm(k.replace(/^RIT_/,""))+'?</div><div class="hint" style="margin-top:8px">Den här enhetens version sparas först i serverns arkiv, så den går att återställa.</div>',[{label:"Avbryt",value:false},{label:"Hämta serverns",value:true,primary:true}]);
+  if(!ok)return;
+  const d=await photoGet(k),m=ritMeta[k]||{};
+  if(d){const r=await ritPost(k,{data:d,archiveOnly:true,meta:{fil:m.file||"",importerad:m.date||"",kalla:"enhet"}});if(!r||!r.ok){toast("Kunde inte spara enhetens version – avbryter");return;}}
+  toast((await ritDownload(k,s))?"Serverns version hämtad":"Kunde inte hämta serverns version");await ritFetchInfo();renderRitList();
+}
+async function ritViewServer(k,ver,title,sha){
+  const d=await ritFetchServerImage(k,sha,ver);if(!d){toast("Kunde inte hämta ritningen från servern");return;}
+  const p=ritKeyParts(k);openRitningView(p.omr,p.b3,{img:d,title,sha});
+}
+async function ritVersions(k){
+  let list=null;try{const r=await fetch(ritBase()+"/api/ritarkiv/"+encodeURIComponent(k),{cache:"no-store"});if(r.ok)list=(await r.json()).versions||[];}catch(e){}
+  const name=k.replace(/^RIT_/,"");
+  $("sheet").innerHTML='<div class="gripbar"><div class="ttl">Tidigare versioner · '+htm(name)+'<small>Sparade på servern</small></div><button id="rvvClose">×</button></div>'+
+    '<div class="wrap">'+(list===null?'<div class="empty">Ingen kontakt med servern.</div>':(!list.length?'<div class="empty">Inga tidigare versioner sparade.</div>':
+    list.map((v,i)=>'<div class="ritrow"><div class="th" data-i="'+i+'"></div><div class="inf"><div class="nm">'+htm(ritFmt(v.arkiverad))+'</div><div class="sub">'+htm(v.orsak||"")+' · '+htm(v.fil||"okänd fil")+(v.importerad?' · importerad '+htm(ritFmt(v.importerad)):'')+'</div><div class="ritact"><button class="vv" data-i="'+i+'">Visa med placeringar</button><button class="vr" data-i="'+i+'">Återställ</button></div></div></div>').join("")))+'</div>'+
+    '<div class="savezone"><button class="btn primary" id="rvvDone" style="flex:1">Klar</button></div>';
+  showSheet();const S=$("sheet");S.querySelector("#rvvClose").onclick=closeRecord;S.querySelector("#rvvDone").onclick=closeRecord;
+  if(!list||!list.length)return;
+  S.querySelectorAll(".vv").forEach(b=>b.onclick=()=>{const v=list[+b.dataset.i];ritViewServer(k,v.ver,"Arkiv "+ritFmt(v.arkiverad),v.sha);});
+  S.querySelectorAll(".vr").forEach(b=>b.onclick=async()=>{const v=list[+b.dataset.i];
+    const ok=await ritAsk('<div style="font-family:var(--disp);font-weight:700;font-size:17px">Återställ versionen från '+htm(ritFmt(v.arkiverad))+'?</div><div class="hint" style="margin-top:8px">Nuvarande ritning sparas i arkivet. Alla enheter får den återställda versionen vid synk.</div>',[{label:"Avbryt",value:false},{label:"Återställ",value:true,primary:true}]);
+    if(!ok)return;let r=null;try{r=await fetch(ritBase()+"/api/ritarkiv/restore",{method:"POST",headers:{"Content-Type":"application/json"},body:JSON.stringify({id:k,ver:v.ver})});}catch(e){}
+    if(!r||!r.ok){toast("Kunde inte återställa");return;}
+    const info=await ritFetchInfo();if(info&&info[k])await ritDownload(k,info[k]);toast("Version återställd");closeRecord();renderRitList();});
+  for(const th of S.querySelectorAll(".th")){const v=list[+th.dataset.i];const d=await ritFetchServerImage(k,v.sha,v.ver);if(d){const t=await makeThumb(d,240);if(t)th.style.backgroundImage="url("+t+")";}}
 }
 async function renderRitList(){
   const host=$("ritList");if(!host)return;
-  const keys=(await photoKeys()).filter(k=>typeof k==="string"&&k.indexOf("RIT_")===0).sort();
-  if(!keys.length){host.innerHTML='<div class="hint" style="color:var(--muted)">Inga ritningar inlästa än.</div>';return;}
-  host.innerHTML='<div class="hint" style="margin:6px 0">'+keys.length+' ritning(ar):</div>'+keys.map(k=>'<div class="obj" style="cursor:default"><div class="oi"><div class="a">'+esc(k.replace(/^RIT_/,""))+'</div></div><button class="ritView" data-k="'+esc(k)+'" style="background:none;border:none;color:var(--accent-deep);font-size:13px;cursor:pointer;margin-left:auto">Visa</button><button class="ritDel" data-k="'+esc(k)+'" style="background:none;border:none;color:#c0392b;font-size:13px;cursor:pointer;margin-left:10px">Ta bort</button></div>').join("");
-  host.querySelectorAll(".ritDel").forEach(b=>b.onclick=()=>deleteRitning(b.dataset.k));
-  host.querySelectorAll(".ritView").forEach(b=>b.onclick=()=>{const p=b.dataset.k.replace(/^RIT_/,"").split("-");openRitningView(p[0],p[1]||"");});
+  const keys=(await photoKeys()).filter(k=>typeof k==="string"&&k.indexOf("RIT_")===0);
+  const local=new Set(keys),srv=ritServer;
+  const all=[...new Set(keys.concat(srv?Object.keys(srv):[]))].sort();
+  if(!all.length){host.innerHTML='<div class="hint" style="color:var(--muted)">Inga ritningar inlästa än.</div>';ritRenderArchived(host,local);return;}
+  const rows=all.map(k=>{
+    const m=ritMeta[k]||{},s=srv&&srv[k],p=ritKeyParts(k),objs=ritObjects(k),placed=objs.filter(x=>x.mark);
+    const other=m.sha?placed.filter(x=>x.mark.rit&&x.mark.rit!==m.sha).length:0;
+    let st,cls;
+    if(!local.has(k)){st="Finns på servern – hämtas vid nästa synk";cls="wait";}
+    else if(m.conflict){st="Avviker från serverns version – välj vilken som gäller";cls="warn";}
+    else if(m.pending==="replace"){st="Ersatt här – skickas till servern vid synk";cls="wait";}
+    else if(m.pending||(srv&&!s)){st="Bara på den här enheten – skickas vid synk";cls="wait";}
+    else if(!srv){st="Ej kontrollerad mot servern";cls="wait";}
+    else if(m.sha&&s.sha===m.sha){st="Synkad";cls="ok";}
+    else{st="Kontrolleras vid nästa synk";cls="wait";}
+    const sm=(s&&s.meta)||{},file=m.file||sm.fil||"",date=m.date||sm.importerad||sm.uppladdad||"",arch=(s&&s.arkiv)||0,addr=ritAddr(k);
+    const text=(k+" "+(OMRADE[p.omr]||"")+" "+addr+" "+file).toLowerCase();
+    const html='<div class="ritrow" data-k="'+htm(k)+'" data-t="'+htm(text)+'"><div class="th" data-k="'+htm(k)+'" title="Visa"></div><div class="inf">'+
+      '<div class="nm">'+htm(k.replace(/^RIT_/,""))+' <span class="on">'+htm(OMRADE[p.omr]||"")+'</span></div>'+
+      '<div class="sub">'+(addr?htm(addr)+' · ':'')+(file?htm(file)+' · ':'')+'importerad '+htm(ritFmt(date))+' · <b>'+placed.length+'</b> av '+objs.length+' dörrar placerade</div>'+
+      (other?'<div class="sub" style="color:#a14b0c"><b>⚠ '+other+' dörrar placerades på en annan version av ritningen</b></div>':'')+
+      '<span class="ritst '+cls+'">'+htm(st)+'</span>'+
+      '<div class="ritact">'+(local.has(k)?'<button class="a-view">Visa</button>':'<button class="a-vsrv">Visa</button>')+
+      (m.conflict&&s?'<button class="a-vsrv warn">Visa serverns</button><button class="a-mine warn">Använd min för alla</button><button class="a-srv warn">Använd serverns</button>':'')+
+      '<button class="a-repl">Ersätt…</button>'+(arch?'<button class="a-ver">Tidigare versioner ('+arch+')</button>':'')+'<button class="a-del del">Ta bort</button></div>'+
+      '</div></div>';
+    return {k,cls,html};
+  });
+  const nWarn=rows.filter(r=>r.cls==="warn").length,nWait=rows.filter(r=>r.cls==="wait").length;
+  host.innerHTML='<input id="ritSearch" placeholder="Sök område, hus, adress eller filnamn" value="'+htm(ritFilter)+'" style="margin:4px 0 6px">'+
+    '<div class="hint" style="margin:6px 0">'+all.length+' ritning(ar)'+(nWarn?' · <b style="color:#a14b0c">'+nWarn+' avviker</b>':'')+(nWait?' · '+nWait+' väntar på synk':'')+(srv?'':' · serverstatus okänd (synka för att kontrollera)')+'</div>'+
+    '<div id="ritRows">'+rows.map(r=>r.html).join("")+'</div><div id="ritArch"></div>';
+  const applyFilter=()=>{const q=ritFilter.trim().toLowerCase();host.querySelectorAll(".ritrow").forEach(r=>{r.style.display=(!q||r.dataset.t.indexOf(q)>=0)?"":"none";});};
+  const si=host.querySelector("#ritSearch");si.oninput=()=>{ritFilter=si.value;applyFilter();};applyFilter();
+  host.querySelectorAll(".ritrow").forEach(row=>{const k=row.dataset.k,p=ritKeyParts(k),s=srv&&srv[k];
+    const on=(sel,fn)=>{const b=row.querySelector(sel);if(b)b.onclick=fn;};
+    on(".a-view",()=>openRitningView(p.omr,p.b3));
+    on(".th",()=>local.has(k)?openRitningView(p.omr,p.b3):(s&&ritViewServer(k,"","Serverns version",s.sha)));
+    row.querySelectorAll(".a-vsrv").forEach(b=>b.onclick=()=>s&&ritViewServer(k,"","Serverns version",s.sha));
+    on(".a-mine",()=>ritUseMine(k));on(".a-srv",()=>ritUseServer(k));
+    on(".a-repl",()=>{ritReplaceKey=k.replace(/^RIT_/,"");$("ritReplaceFile").click();});
+    on(".a-ver",()=>ritVersions(k));on(".a-del",()=>deleteRitning(k));});
+  ritRenderArchived(host,new Set(all));
+  for(const row of host.querySelectorAll(".ritrow")){const k=row.dataset.k;if(!local.has(k))continue;const t=await ritThumb(k);const th=row.querySelector(".th");if(t&&th)th.style.backgroundImage="url("+t+")";}
 }
-async function deleteRitning(key){
-  if(!confirm("Ta bort ritningen "+key.replace(/^RIT_/,"")+"?\n\nTas bort lokalt och på servern (och därmed på alla enheter vid synk). Ersätt i stället genom att importera en ny med samma namn."))return;
-  await photoDel(key);
-  const base=(serverUrl||"").replace(/\/+$/,"");
-  try{await fetch(base+"/api/photo/"+encodeURIComponent(key),{method:"DELETE"});}catch(e){}
-  toast("Ritning borttagen");renderRitList();
+// Borttagna ritningar som finns kvar i serverns arkiv.
+async function ritRenderArchived(host,present){
+  let keys=null;try{const r=await fetch(ritBase()+"/api/ritarkiv",{cache:"no-store"});if(r.ok)keys=(await r.json()).keys||{};}catch(e){}
+  const box=host.querySelector("#ritArch")||host.appendChild(Object.assign(document.createElement("div"),{id:"ritArch"}));
+  const gone=keys?Object.keys(keys).filter(k=>!present.has(k)).sort():[];
+  if(!gone.length){box.innerHTML="";return;}
+  box.innerHTML='<div class="hint" style="margin:16px 0 4px"><b>Borttagna ritningar i arkivet</b></div>'+gone.map(k=>'<div class="ritrow"><div class="inf"><div class="nm">'+htm(k.replace(/^RIT_/,""))+' <span class="on">'+htm(OMRADE[ritKeyParts(k).omr]||"")+'</span></div><div class="ritact"><button data-k="'+htm(k)+'">Versioner ('+keys[k]+')</button></div></div></div>').join("");
+  box.querySelectorAll("button[data-k]").forEach(b=>b.onclick=()=>ritVersions(b.dataset.k));
 }
-async function openRitningView(omr,byg){
-  const b3=String(byg||"").padStart(3,"0");const img=await photoGet("RIT_"+omr+"-"+b3);
-  const head='<div class="gripbar"><div class="ttl">Ritning · Hus '+b3+'<small>'+omr+' · '+(OMRADE[omr]||"")+'</small></div><button id="rvClose">×</button></div>';
+async function openRitningView(omr,byg,opt){opt=opt||{};
+  const b3=String(byg||"").padStart(3,"0");const img=opt.img||await photoGet("RIT_"+omr+"-"+b3);
+  const curSha=opt.sha||((ritMeta["RIT_"+omr+"-"+b3]||{}).sha)||"";const isOther=x=>!!(x.mark&&x.mark.rit&&curSha&&x.mark.rit!==curSha);
+  const head='<div class="gripbar"><div class="ttl">Ritning · Hus '+b3+(opt.title?' · '+htm(opt.title):'')+'<small>'+omr+' · '+(OMRADE[omr]||"")+'</small></div><button id="rvClose">×</button></div>';
   if(!img){$("sheet").innerHTML=head+'<div class="wrap"><div class="card"><div class="body"><div class="empty" style="padding:28px 14px;line-height:1.7">Ingen ritning importerad för <b>'+omr+'-'+b3+'</b>.<br><small style="color:var(--muted)">Importera en ritning döpt '+omr+'-'+b3+' under fliken Importera.</small></div></div></div></div><div class="savezone"><button class="btn primary" id="rvDone" style="flex:1">Klar</button></div>';showSheet();$("sheet").querySelector("#rvClose").onclick=closeRecord;$("sheet").querySelector("#rvDone").onclick=closeRecord;return;}
   const lbl=x=>(x.di?String(x.di).slice(-4):(x.lgh||""));
   const doors=objects.filter(x=>x.omr===omr&&byg3(x)===b3&&x.mark);
-  const dot=x=>'<div class="mk tap '+(isDone(x)?'done':'todo')+'" data-k="'+x.key+'" style="left:'+(x.mark.x*100)+'%;top:'+(x.mark.y*100)+'%">'+esc(lbl(x))+'</div>';
+  const nOther=doors.filter(isOther).length;
+  const dot=x=>'<div class="mk tap '+(isDone(x)?'done':'todo')+(isOther(x)?' other':'')+'" data-k="'+x.key+'" style="left:'+(x.mark.x*100)+'%;top:'+(x.mark.y*100)+'%">'+esc(lbl(x))+'</div>';
   $("sheet").innerHTML=head+
     '<div id="rvView" class="plview"><div id="rvStage" class="plstage"><img id="rvImg" src="'+img+'" draggable="false">'+doors.map(dot).join("")+'</div>'+
     '<div class="plzoom"><button id="rvIn">+</button><button id="rvOut">\u2212</button><button id="rvFit">\u2922</button></div></div>'+
-    '<div class="hint" style="padding:8px 14px">'+doors.length+' placerade dörrar \u00b7 grön = klar, röd = ej klar \u00b7 tryck på en markör för att öppna dörren.</div>'+
+    '<div class="hint" style="padding:8px 14px">'+doors.length+' placerade dörrar \u00b7 grön = klar, röd = ej klar \u00b7 tryck på en markör för att öppna dörren.'+(nOther?' <b style="color:#a14b0c">Orange streckad = '+nOther+' placerade på en annan version av ritningen.</b>':'')+'</div>'+
     '<div class="savezone"><button class="btn primary" id="rvDone" style="flex:1">Klar</button></div>';
   showSheet();const S=$("sheet");
   const view=S.querySelector("#rvView"),stage=S.querySelector("#rvStage");
@@ -660,7 +879,7 @@ async function exportRitningar(){
 }
 async function openPlacera(key){
   const o=objects.find(x=>x.key===key);if(!o)return;placeKey=key;
-  const rk=ritKey(o);const img=await photoGet(rk);
+  const rk=ritKey(o);const img=await photoGet(rk);const rsha=img?await ritLocalSha(rk):"";
   const head='<div class="gripbar"><div class="ttl">Placera · '+esc(rowHead(o))+'<small>Hus '+byg3(o)+(o.ing?' · ing '+o.ing:'')+' · '+(o.di||'')+'</small></div><button id="plClose">×</button></div>';
   if(!img){
     $("sheet").innerHTML=head+'<div class="wrap"><div class="card"><div class="body"><div class="empty" style="padding:28px 14px;line-height:1.7">Ingen ritning importerad för <b>'+o.omr+'-'+byg3(o)+'</b>.<br><small style="color:var(--muted)">Importera en ritning döpt '+o.omr+'-'+byg3(o)+' (bild eller PDF) under fliken Importera.</small></div></div></div></div><div class="savezone"><button class="btn primary" id="plDone" style="flex:1">Klar</button></div>';
@@ -681,7 +900,7 @@ async function openPlacera(key){
   function apply(){stage.style.transform="translate("+tx+"px,"+ty+"px) scale("+scale+")";stage.style.setProperty("--mks",1/scale);}
   apply();
   function fracFromClient(cx,cy){const r=imgEl.getBoundingClientRect();return {x:Math.max(0,Math.min(1,(cx-r.left)/r.width)),y:Math.max(0,Math.min(1,(cy-r.top)/r.height))};}
-  function setMark(fr){o.mark=fr;o.ts=new Date().toISOString();persist();refreshAll();let cur=stage.querySelector("#mkCur");if(!cur){cur=document.createElement("div");cur.className="mk cur";cur.id="mkCur";stage.appendChild(cur);}cur.style.left=(fr.x*100)+"%";cur.style.top=(fr.y*100)+"%";cur.textContent=lbl(o);}
+  function setMark(fr){o.mark=rsha?{x:fr.x,y:fr.y,rit:rsha}:{x:fr.x,y:fr.y};o.ts=new Date().toISOString();persist();refreshAll();let cur=stage.querySelector("#mkCur");if(!cur){cur=document.createElement("div");cur.className="mk cur";cur.id="mkCur";stage.appendChild(cur);}cur.style.left=(fr.x*100)+"%";cur.style.top=(fr.y*100)+"%";cur.textContent=lbl(o);}
   const pts=new Map();let mode=null,sx,sy,tx0,ty0,pd0,sc0,mid0;
   view.addEventListener("pointerdown",e=>{try{view.setPointerCapture(e.pointerId);}catch(_){}pts.set(e.pointerId,{x:e.clientX,y:e.clientY});
     if(pts.size===1){const onCur=e.target&&e.target.closest&&e.target.closest("#mkCur");mode=onCur?"drag":"maybe";sx=e.clientX;sy=e.clientY;tx0=tx;ty0=ty;}
@@ -1009,8 +1228,7 @@ async function syncNow(){
       const refIds=new Set();objects.forEach(o=>(o.photos||[]).forEach(id=>refIds.add(id)));
       for(const id of refIds){if(localKeys.has(id)&&!srvIds.has(id)){const d=await photoGet(id);if(d){await fetch(base+"/api/photo",{method:"POST",headers:{"Content-Type":"application/json"},body:JSON.stringify({id,data:d})}).catch(()=>{});}}}
       for(const id of refIds){if(!localKeys.has(id)&&srvIds.has(id)){const bl=await fetch(base+"/api/photo/"+id).then(r=>r.ok?r.blob():null).catch(()=>null);if(bl){const du=await blobToDataURL(bl);if(du)await photoPut(id,du);}}}
-      const ritLocal=[...localKeys].filter(k=>typeof k==="string"&&k.indexOf("RIT_")===0);for(const id of ritLocal){if(!srvIds.has(id)){const d=await photoGet(id);if(d)await fetch(base+"/api/photo",{method:"POST",headers:{"Content-Type":"application/json"},body:JSON.stringify({id,data:d})}).catch(()=>{});}}
-      const ritSrv=[...srvIds].filter(k=>typeof k==="string"&&k.indexOf("RIT_")===0);for(const id of ritSrv){if(!localKeys.has(id)){const bl=await fetch(base+"/api/photo/"+id).then(r=>r.ok?r.blob():null).catch(()=>null);if(bl){const du=await blobToDataURL(bl);if(du)await photoPut(id,du);}}}
+      await syncRitningar();
     }catch(e){}
     toast("Synkad mot server ✓");loadFotoAreas();renderRitList();
     $("syncStatus").textContent="Senaste synk: "+fmt(lastSync);
@@ -1045,7 +1263,8 @@ function init(){
   if($("fotoExp")){$("fotoExp").onclick=fotoExport;$("fotoDel").onclick=fotoClear;loadFotoAreas();}
   const drop=$("drop"),file=$("file");drop.onclick=()=>file.click();file.onchange=e=>{if(e.target.files[0])handleFile(e.target.files[0]);};
   if($("ritExport"))$("ritExport").onclick=exportRitningar;
-  renderRitList();
+  renderRitList();ritFetchInfo().then(i=>{if(i)renderRitList();});
+  if($("ritReplaceFile"))$("ritReplaceFile").onchange=e=>{const f=e.target.files[0];e.target.value="";if(f&&ritReplaceKey)importRitningar([f],ritReplaceKey);};
   const ritDrop=$("ritDrop"),ritFile=$("ritFile");if(ritDrop){ritDrop.onclick=()=>ritFile.click();ritFile.onchange=e=>{if(e.target.files.length)importRitningar([...e.target.files]);e.target.value="";};["dragover","dragenter"].forEach(ev=>ritDrop.addEventListener(ev,e=>{e.preventDefault();ritDrop.classList.add("hot");}));["dragleave","drop"].forEach(ev=>ritDrop.addEventListener(ev,e=>{e.preventDefault();ritDrop.classList.remove("hot");}));ritDrop.addEventListener("drop",e=>{if(e.dataTransfer.files.length)importRitningar([...e.dataTransfer.files]);});}
   ["dragover","dragenter"].forEach(ev=>drop.addEventListener(ev,e=>{e.preventDefault();drop.classList.add("hot");}));
   ["dragleave","drop"].forEach(ev=>drop.addEventListener(ev,e=>{e.preventDefault();drop.classList.remove("hot");}));
