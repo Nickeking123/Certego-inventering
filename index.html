@@ -144,6 +144,9 @@
   .plzoom{position:absolute;right:10px;bottom:10px;display:flex;flex-direction:column;gap:6px;z-index:10}
   .plzoom button{width:40px;height:40px;border-radius:10px;border:1px solid var(--line);background:#fff;font-size:20px;font-weight:700;box-shadow:0 1px 4px rgba(0,0,0,.2);cursor:pointer}
   .mk.cur{background:#1e7a46;z-index:5}
+  .mk.aptus{background:#f4c20d;color:#1d2329;border-width:3px}
+  .mk.aptus.done{border-color:#1e7a46}.mk.aptus.todo{border-color:#c0392b}
+  .mk.cur.aptus{background:#f4c20d;border-color:#1e7a46;border-width:3px}
   .savezone{flex:none;background:var(--bg);padding:12px 16px;padding-bottom:max(18px,env(safe-area-inset-bottom));display:flex;gap:10px;border-top:1px solid var(--line-soft)}
   .toast{position:fixed;bottom:90px;left:50%;transform:translateX(-50%);background:var(--steel);color:#fff;font-size:13.5px;font-weight:500;padding:10px 16px;border-radius:10px;z-index:80;opacity:0;transition:.2s;pointer-events:none}
   .toast.show{opacity:1}
@@ -753,11 +756,11 @@ async function openRitningView(omr,byg,opt){opt=opt||{};
   const lbl=x=>(x.di?String(x.di).slice(-4):(x.lgh||""));
   const doors=objects.filter(x=>x.omr===omr&&byg3(x)===b3&&x.mark);
   const nOther=doors.filter(isOther).length;
-  const dot=x=>'<div class="mk tap '+(isDone(x)?'done':'todo')+(isOther(x)?' other':'')+'" data-k="'+x.key+'" style="left:'+(x.mark.x*100)+'%;top:'+(x.mark.y*100)+'%">'+esc(lbl(x))+'</div>';
+  const dot=x=>'<div class="mk tap '+(isDone(x)?'done':'todo')+(hasAptus(x)?' aptus':'')+(isOther(x)?' other':'')+'" data-k="'+x.key+'" style="left:'+(x.mark.x*100)+'%;top:'+(x.mark.y*100)+'%">'+esc(lbl(x))+'</div>';
   $("sheet").innerHTML=head+
     '<div id="rvView" class="plview"><div id="rvStage" class="plstage"><img id="rvImg" src="'+img+'" draggable="false">'+doors.map(dot).join("")+'</div>'+
     '<div class="plzoom"><button id="rvIn">+</button><button id="rvOut">\u2212</button><button id="rvFit">\u2922</button></div></div>'+
-    '<div class="hint" style="padding:8px 14px">'+doors.length+' placerade dörrar \u00b7 grön = klar, röd = ej klar \u00b7 tryck på en markör för att öppna dörren.'+(nOther?' <b style="color:#a14b0c">Orange streckad = '+nOther+' placerade på en annan version av ritningen.</b>':'')+'</div>'+
+    '<div class="hint" style="padding:8px 14px">'+doors.length+' placerade dörrar \u00b7 grön = klar, röd = ej klar, gul = Aptus (kanten visar klar/ej klar) \u00b7 tryck på en markör för att öppna dörren.'+(nOther?' <b style="color:#a14b0c">Orange streckad = '+nOther+' placerade på en annan version av ritningen.</b>':'')+'</div>'+
     '<div class="savezone"><button class="btn primary" id="rvDone" style="flex:1">Klar</button></div>';
   showSheet();const S=$("sheet");
   const view=S.querySelector("#rvView"),stage=S.querySelector("#rvStage");
@@ -778,6 +781,9 @@ async function openRitningView(omr,byg,opt){opt=opt||{};
 }
 // ---- Ritningsexport: liten punkt på exakt position + etikett med hänvisningslinje ----
 // Läser bara o.mark (andel 0–1 av ritningens bredd/höjd, origo uppe till vänster). Sparad data ändras aldrig här.
+// Dörrar med någon Aptus-enhet visas gula på ritningen (kanten visar klar/ej klar).
+const APTUS_TYPER=new Set(["Kortläsare","Porttelefon","Bokningstavla"]);
+function hasAptus(o){return (o.components||[]).some(c=>APTUS_TYPER.has(c.typ));}
 function ritDoors(key){const p=key.replace(/^RIT_/,"").split("-");const omr=p[0],b3=p[1]||"";return objects.filter(x=>x.omr===omr&&byg3(x)===b3&&x.mark&&isFinite(x.mark.x)&&isFinite(x.mark.y));}
 function ritLabel(x){return x.di?String(x.di).slice(-4):(x.lgh||"");}
 // Hur "ritad" en yta är (0 = tomt papper, 1 = helsvart) – används för att lägga etiketter där ritningen är tom.
@@ -840,14 +846,16 @@ async function composeRit(key){
     if(!b){const cx=clamp(p.x,p.w/2+2,W-p.w/2-2),cy=clamp(p.y-p.h,p.h/2+2,H-p.h/2-2);const r={x0:cx-p.w/2,y0:cy-p.h/2,x1:cx+p.w/2,y1:cy+p.h/2};b={r,seg:{x0:p.x,y0:p.y,x1:clamp(p.x,r.x0,r.x1),y1:clamp(p.y,r.y0,r.y1)}};}
     p.lab=b.r;p.seg=b.seg;placed.push(b.r);segs.push(b.seg);});
   const col=p=>isDone(p.o)?"#1e7a46":"#c0392b";
+  const fill=p=>p.ap?"#f4c20d":col(p),edge=p=>p.ap?col(p):"#fff",ink=p=>p.ap?"#1d2329":"#fff";
+  pts.forEach(p=>{p.ap=hasAptus(p.o);});
   ctx.lineCap="round";
   const line=(s,c,w)=>{ctx.strokeStyle=c;ctx.lineWidth=w;ctx.beginPath();ctx.moveTo(s.x0,s.y0);ctx.lineTo(s.x1,s.y1);ctx.stroke();};
   pts.forEach(p=>{if(p.seg&&Math.hypot(p.seg.x1-p.seg.x0,p.seg.y1-p.seg.y0)>rr*1.2)line(p.seg,"#fff",lw*2.6);});
   pts.forEach(p=>{if(p.seg&&Math.hypot(p.seg.x1-p.seg.x0,p.seg.y1-p.seg.y0)>rr*1.2)line(p.seg,col(p),lw);});
-  pts.forEach(p=>{ctx.beginPath();ctx.arc(p.x,p.y,rr,0,Math.PI*2);ctx.fillStyle=col(p);ctx.fill();ctx.lineWidth=lw;ctx.strokeStyle="#fff";ctx.stroke();});
+  pts.forEach(p=>{ctx.beginPath();ctx.arc(p.x,p.y,rr,0,Math.PI*2);ctx.fillStyle=fill(p);ctx.fill();ctx.lineWidth=p.ap?lw*1.6:lw;ctx.strokeStyle=edge(p);ctx.stroke();});
   pts.forEach(p=>{if(!p.lab)return;const r=p.lab,w=r.x1-r.x0,h=r.y1-r.y0,q=h/3;
-    ctx.fillStyle=col(p);ctx.beginPath();ctx.moveTo(r.x0+q,r.y0);ctx.arcTo(r.x1,r.y0,r.x1,r.y1,q);ctx.arcTo(r.x1,r.y1,r.x0,r.y1,q);ctx.arcTo(r.x0,r.y1,r.x0,r.y0,q);ctx.arcTo(r.x0,r.y0,r.x1,r.y0,q);ctx.closePath();ctx.fill();
-    ctx.lineWidth=lw;ctx.strokeStyle="#fff";ctx.stroke();ctx.fillStyle="#fff";ctx.fillText(p.txt,r.x0+w/2,r.y0+h/2+fs*0.04);});
+    ctx.fillStyle=fill(p);ctx.beginPath();ctx.moveTo(r.x0+q,r.y0);ctx.arcTo(r.x1,r.y0,r.x1,r.y1,q);ctx.arcTo(r.x1,r.y1,r.x0,r.y1,q);ctx.arcTo(r.x0,r.y1,r.x0,r.y0,q);ctx.arcTo(r.x0,r.y0,r.x1,r.y0,q);ctx.closePath();ctx.fill();
+    ctx.lineWidth=p.ap?lw*1.6:lw;ctx.strokeStyle=edge(p);ctx.stroke();ctx.fillStyle=ink(p);ctx.fillText(p.txt,r.x0+w/2,r.y0+h/2+fs*0.04);});
   return cv.toDataURL("image/jpeg",0.88);
 }
 // Dörr-id + position per ritning, i samma form som Fieldwire-verktyget: procent av bredd/höjd, origo uppe till vänster.
@@ -887,7 +895,7 @@ async function openPlacera(key){
   }
   const lbl=x=>(x.di?String(x.di).slice(-4):(x.lgh||""));
   const same=objects.filter(x=>x.omr===o.omr&&byg3(x)===byg3(o)&&x.mark&&x.key!==o.key);
-  const dot=(x,cur)=>'<div class="mk'+(cur?' cur':'')+'"'+(cur?' id="mkCur"':'')+' style="left:'+(x.mark.x*100)+'%;top:'+(x.mark.y*100)+'%">'+esc(lbl(x))+'</div>';
+  const dot=(x,cur)=>'<div class="mk'+(cur?' cur':'')+(hasAptus(x)?' aptus':'')+'"'+(cur?' id="mkCur"':'')+' style="left:'+(x.mark.x*100)+'%;top:'+(x.mark.y*100)+'%">'+esc(lbl(x))+'</div>';
   const marks=same.map(x=>dot(x,false)).join("")+(o.mark?dot(o,true):'');
   $("sheet").innerHTML=head+
     '<div id="plView" class="plview"><div id="plStage" class="plstage"><img id="plImg" src="'+img+'" draggable="false">'+marks+'</div>'+
@@ -900,7 +908,7 @@ async function openPlacera(key){
   function apply(){stage.style.transform="translate("+tx+"px,"+ty+"px) scale("+scale+")";stage.style.setProperty("--mks",1/scale);}
   apply();
   function fracFromClient(cx,cy){const r=imgEl.getBoundingClientRect();return {x:Math.max(0,Math.min(1,(cx-r.left)/r.width)),y:Math.max(0,Math.min(1,(cy-r.top)/r.height))};}
-  function setMark(fr){o.mark=rsha?{x:fr.x,y:fr.y,rit:rsha}:{x:fr.x,y:fr.y};o.ts=new Date().toISOString();persist();refreshAll();let cur=stage.querySelector("#mkCur");if(!cur){cur=document.createElement("div");cur.className="mk cur";cur.id="mkCur";stage.appendChild(cur);}cur.style.left=(fr.x*100)+"%";cur.style.top=(fr.y*100)+"%";cur.textContent=lbl(o);}
+  function setMark(fr){o.mark=rsha?{x:fr.x,y:fr.y,rit:rsha}:{x:fr.x,y:fr.y};o.ts=new Date().toISOString();persist();refreshAll();let cur=stage.querySelector("#mkCur");if(!cur){cur=document.createElement("div");cur.className="mk cur"+(hasAptus(o)?" aptus":"");cur.id="mkCur";stage.appendChild(cur);}cur.style.left=(fr.x*100)+"%";cur.style.top=(fr.y*100)+"%";cur.textContent=lbl(o);}
   const pts=new Map();let mode=null,sx,sy,tx0,ty0,pd0,sc0,mid0;
   view.addEventListener("pointerdown",e=>{try{view.setPointerCapture(e.pointerId);}catch(_){}pts.set(e.pointerId,{x:e.clientX,y:e.clientY});
     if(pts.size===1){const onCur=e.target&&e.target.closest&&e.target.closest("#mkCur");mode=onCur?"drag":"maybe";sx=e.clientX;sy=e.clientY;tx0=tx;ty0=ty;}
