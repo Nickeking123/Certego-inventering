@@ -1,4 +1,4 @@
-const CACHE = "certego-inventering-v13";
+const CACHE = "certego-inventering-v14";
 const SHELL = ["./", "./index.html", "./manifest.webmanifest", "./icon-192.png", "./icon-512.png"];
 
 self.addEventListener("install", e => {
