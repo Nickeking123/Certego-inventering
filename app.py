@@ -64,7 +64,7 @@ def load_bundle():
             return json.loads(row[0])
         except Exception:
             pass
-    return {"objects": [], "didPool": {}, "didReserved": {}, "equip": []}
+    return {"objects": [], "didPool": {}, "didReserved": {}, "equip": [], "didBlock": {}}
 
 
 def save_bundle(b):
@@ -104,6 +104,20 @@ def merge(server, inc):
         seen = set(cur)
         pool[k] = cur + [x for x in arr if x not in seen]
     server["didPool"] = pool
+
+    # Spärrade Dörr-id-intervall per område: {"0327": [[2001, 2403], ...]} – union, tas aldrig bort.
+    blk = server.get("didBlock", {}) or {}
+    for omr, ranges in (inc.get("didBlock", {}) or {}).items():
+        cur = blk.get(omr, [])
+        for r in ranges or []:
+            try:
+                f, t = int(r[0]), int(r[1])
+            except Exception:
+                continue
+            if [f, t] not in cur:
+                cur.append([f, t])
+        blk[omr] = sorted(cur)
+    server["didBlock"] = blk
 
     eq = {e["key"]: e for e in server.get("equip", []) if e.get("key")}
     for ie in inc.get("equip", []):
@@ -227,7 +241,7 @@ def rit_meta_path(pid):
 def clean_meta(m):
     out = {}
     if isinstance(m, dict):
-        for k in ("fil", "importerad", "kalla"):
+        for k in ("fil", "importerad", "kalla", "namn"):
             v = m.get(k)
             if isinstance(v, str):
                 out[k] = v[:200]

@@ -138,6 +138,14 @@
   .ritask .cmp img{width:100%;max-height:42vh;object-fit:contain;border:1px solid var(--line);border-radius:8px;background:#fff;margin-top:4px}
   .ritask .cap{font-size:12px;color:var(--muted);margin-top:4px;overflow-wrap:anywhere}
   .ritask .btns{display:flex;gap:10px;margin-top:12px}
+  .ritpick{display:flex;flex-direction:column;gap:8px;margin-top:12px}
+  .ritpick button{display:flex;align-items:center;gap:12px;text-align:left;padding:8px 10px;border:1px solid var(--line);border-radius:10px;background:#fff;cursor:pointer;font:inherit;color:inherit;width:100%}
+  .ritpick button.cur{border-color:#1e7a46;box-shadow:0 0 0 2px rgba(30,122,70,.18)}
+  .ritpick .pth{flex:none;width:76px;height:56px;border-radius:6px;background:#f2f2f2 center/contain no-repeat;border:1px solid var(--line)}
+  .ritpick .pnm{font-weight:700;font-size:15px}
+  .ritpick .psub{font-size:12px;color:var(--muted);margin-top:2px}
+  .ritpick .tag{display:inline-block;font-size:11px;padding:1px 7px;border-radius:999px;background:#e2f0e8;color:#1e7a46;margin-left:6px;font-weight:600}
+  .ritpick .tag.last{background:var(--steel-soft);color:inherit}
   .plview{position:relative;height:60vh;overflow:hidden;background:#eceff1;touch-action:none;user-select:none}
   .plstage{position:absolute;top:0;left:0;width:100%;transform-origin:0 0;will-change:transform}
   .plstage img{width:100%;display:block;pointer-events:none}
@@ -213,7 +221,7 @@ details.cov-details[open]>summary::after{transform:rotate(90deg)}
     </div></div>
     <h2 class="sec">Ritningar (per hus)</h2>
     <div class="card"><div class="body">
-      <div class="drop" id="ritDrop"><div class="big">Välj ritningar</div><div class="sub">Bild (PNG/JPG) eller PDF, döpt efter område-husnummer, t.ex. 0652-001. Flera filer går bra.</div></div>
+      <div class="drop" id="ritDrop"><div class="big">Välj ritningar</div><div class="sub">Bild (PNG/JPG) eller PDF, döpt efter område-husnummer, t.ex. 0652-001. Flera ritningar för samma hus: lägg till ett namn efter numret, t.ex. "0652-001 Källare" och "0652-001 Plan 1". Flera filer går bra.</div></div>
       <input type="file" id="ritFile" accept="image/*,.pdf" multiple hidden>
       <input type="file" id="ritReplaceFile" accept="image/*,.pdf" hidden>
       <div id="ritResult" class="hint" style="margin-top:12px"></div>
@@ -253,7 +261,19 @@ details.cov-details[open]>summary::after{transform:rotate(90deg)}
       </div>
       <div class="hint" style="margin-top:8px">Väljer du ett område exporteras bara det området.</div>
       <button id="resetDiO" class="danger" style="margin-top:12px;width:100%">Återställ Dörr-id för valt område</button>
-      <div class="hint" style="margin-top:6px;color:var(--muted)">Nollställer tilldelade bas-Dörr-id för området så nästa Tilldela alla börjar om på 2001. Kräver att du skriver områdeskoden.</div>
+      <div class="hint" style="margin-top:6px;color:var(--muted)">Nollställer tilldelade bas-Dörr-id för området så nästa Tilldela alla börjar om från början av serien (2001, eller direkt efter spärrade nummer). Kräver att du skriver områdeskoden.</div>
+    </div></div>
+    <h2 class="sec">Dörr-id-serie per område</h2>
+    <div class="card"><div class="body">
+      <div class="hint" style="margin-bottom:10px">Har ett område redan Dörr-id som använts tidigare (t.ex. vid en äldre inventering) spärrar du dem här. Tilldelningen hoppar då över dem och fortsätter efter.</div>
+      <div style="display:grid;grid-template-columns:1fr 1fr 1fr;gap:10px">
+        <div class="field"><label>Område</label><input id="dbOmr" inputmode="numeric" maxlength="4" placeholder="0327"></div>
+        <div class="field"><label>Från löpnr</label><input id="dbFrom" inputmode="numeric" maxlength="4" value="2001"></div>
+        <div class="field"><label>Till löpnr</label><input id="dbTo" inputmode="numeric" maxlength="4" placeholder="2403"></div>
+      </div>
+      <div class="hint" id="dbPreview" style="margin-top:8px"></div>
+      <button class="btn primary" id="dbApply" style="margin-top:10px;width:100%">Spärra intervallet</button>
+      <div id="dbList" style="margin-top:12px"></div>
     </div></div>
     <h2 class="sec">Foton per område</h2>
     <div class="card"><div class="body">
@@ -302,7 +322,7 @@ const TKEYS=TOGS.map(t=>t[0]);
 const EQUIP=["Centralapparat","Styra 3000","Styra komkort 4000","Dörrbox","Likriktare","Nätaggregat","Kortläsare","Porttelefon","Manöverpanel","Slingantenn","Motorlås"];
 
 let objects=[];let filter={omr:"",stat:""};let openGroups={};let activeGroup=null;let parsedWb=null,pickedSheets={};
-let didPool={};let didReserved={};let poolBase={};
+let didPool={};let didReserved={};let poolBase={};let didBlock={};
 let serverUrl="";let lastSync="";let equip=[];let eqPhotoTarget=null;let appCode="";
 const _fetch=window.fetch.bind(window);
 window.fetch=function(u,o){try{const url=typeof u==="string"?u:((u&&u.url)||"");if(url.indexOf("/api/")>=0&&appCode){o=Object.assign({},o);o.headers=Object.assign({},(o&&o.headers)||{},{"X-App-Code":appCode});}}catch(e){}return _fetch(u,o);};
@@ -329,6 +349,7 @@ async function load(){
   try{const p=await store.get("uh_didpool_v3");if(p)didPool=JSON.parse(p);}catch(e){}
   try{const rsv=await store.get("uh_didreserved_v3");if(rsv)didReserved=JSON.parse(rsv);}catch(e){}
   try{const pb=await store.get("uh_poolbase_v3");if(pb)poolBase=JSON.parse(pb);}catch(e){}
+  try{const bl=await store.get("uh_didblock_v3");if(bl)didBlock=JSON.parse(bl)||{};}catch(e){}
   try{serverUrl=(await store.get("uh_server"))||"";}catch(e){}
   try{appCode=(await store.get("uh_appcode"))||"";}catch(e){}
   try{lastSync=(await store.get("uh_lastsync"))||"";}catch(e){}
@@ -342,6 +363,14 @@ function savePool(){store.set("uh_didpool_v3",JSON.stringify(didPool));}
 function savePoolBase(){store.set("uh_poolbase_v3",JSON.stringify(poolBase));}
 function saveReserved(){store.set("uh_didreserved_v3",JSON.stringify(didReserved));}
 function reserve(id){if(id){didReserved[id]=true;saveReserved();}}
+// ---- Spärrade Dörr-id-intervall (redan använda nummer från tidigare inventeringar) ----
+// didBlock = {"0327":[[2001,2403], …]}. Varje id i intervallen ligger också i didReserved,
+// så spärren gäller även mot en äldre server. didBlock synkas och slås ihop (union).
+function saveBlock(){store.set("uh_didblock_v3",JSON.stringify(didBlock));}
+function diId(omr,n){return "DI"+omr+String(n).padStart(4,"0");}
+function mergeBlocks(a,b){const out={};[a||{},b||{}].forEach(src=>Object.keys(src).forEach(omr=>{const arr=out[omr]=out[omr]||[];(src[omr]||[]).forEach(r=>{if(!Array.isArray(r)||r.length<2)return;const f=parseInt(r[0],10),t=parseInt(r[1],10);if(isNaN(f)||isNaN(t))return;if(!arr.some(x=>x[0]===f&&x[1]===t))arr.push([f,t]);});arr.sort((x,y)=>x[0]-y[0]);}));return out;}
+function applyBlocks(omrF){let n=0;Object.keys(didBlock).forEach(omr=>{if(omrF&&omr!==omrF)return;(didBlock[omr]||[]).forEach(([f,t])=>{for(let i=f;i<=t;i++){const id=diId(omr,i);if(!didReserved[id]){didReserved[id]=true;n++;}}});});if(n)saveReserved();return n;}
+function isBlocked(id){if(typeof id!=="string"||id.length<10)return false;const omr=id.slice(2,6),n=parseInt(id.slice(6),10);return (didBlock[omr]||[]).some(([f,t])=>n>=f&&n<=t);}
 function saveEquip(){store.set("uh_equip_v3",JSON.stringify(equip));}
 // ---- foto (IndexedDB + komprimering) ----
 const PDB="certego_photos";
@@ -459,6 +488,28 @@ function nextBaseDi(omr){
   for(let i=0;i<added.length;i++){if(free(added[i]))return added[i];}
   return added[0];
 }
+// Samma som nextBaseDi men utan sidoeffekter (fyller inte på poolen) – för visning.
+function peekNextDi(omr){
+  const used=new Set(objects.filter(o=>o.di).map(o=>o.di));const free=id=>!didReserved[id]&&!used.has(id);
+  const pool=didPool[omr]||[];for(let i=0;i<pool.length;i++){if(free(pool[i]))return pool[i];}
+  let n=poolMax(omr)+1;while(n<=9999&&!free(diId(omr,n)))n++;return diId(omr,n);
+}
+function dbParse(){const omr=($("dbOmr").value||"").trim().replace(/\D/g,"");const f=parseInt(($("dbFrom").value||"").trim(),10),t=parseInt(($("dbTo").value||"").trim(),10);return {omr:omr?omr.padStart(4,"0"):"",f,t};}
+function dbPreview(){const el=$("dbPreview");if(!el)return;const {omr,f,t}=dbParse();
+  if(!/^\d{4}$/.test(omr)||isNaN(f)||isNaN(t)){el.textContent="Fyll i område och intervall, t.ex. 0327, 2001–2403.";return;}
+  if(f<1||t>9999||t<f){el.innerHTML='<span style="color:var(--accent-deep)">Ogiltigt intervall (1–9999, "till" ≥ "från").</span>';return;}
+  const cnt=t-f+1;el.innerHTML='Spärrar <b>'+diId(omr,f)+'–'+diId(omr,t)+'</b> ('+cnt+' st)'+(OMRADE[omr]?' · '+htm(OMRADE[omr]):'')+(cnt>5000?' <span style="color:var(--accent-deep)">– max 5000 åt gången</span>':'');}
+function dbApply(){const {omr,f,t}=dbParse();
+  if(!/^\d{4}$/.test(omr)||isNaN(f)||isNaN(t)||f<1||t>9999||t<f){toast("Kontrollera område och intervall");return;}
+  const cnt=t-f+1;if(cnt>5000){toast("Max 5000 id åt gången");return;}
+  const inUse=objects.filter(o=>o.omr===omr&&o.di&&(()=>{const n=parseInt(String(o.di).slice(6),10);return String(o.di).slice(2,6)===omr&&n>=f&&n<=t;})()).length;
+  if(!confirm("Spärra "+cnt+" Dörr-id i område "+omr+(OMRADE[omr]?" ("+OMRADE[omr]+")":"")+"?\n\n"+diId(omr,f)+" – "+diId(omr,t)+"\n\n• Appen delar aldrig ut dessa nummer\n• Objekt som redan har ett nummer i intervallet behåller det"+(inUse?" ("+inUse+" st)":"")+"\n• En spärr kan inte tas bort (reserverade id återanvänds aldrig) – kontrollera siffrorna"))return;
+  didBlock=mergeBlocks(didBlock,{[omr]:[[f,t]]});saveBlock();applyBlocks(omr);refreshAll();
+  toast("Spärrat "+cnt+" id – nästa lediga: "+peekNextDi(omr)+". Synka så gäller det alla enheter.");
+}
+function renderDiBlocks(){const host=$("dbList");if(!host)return;const areas=Object.keys(didBlock).filter(k=>(didBlock[k]||[]).length).sort();
+  host.innerHTML=areas.length?areas.map(omr=>'<div class="ritrow" style="display:block"><div class="nm"><b>'+omr+'</b> <span class="on">'+htm(OMRADE[omr]||"")+'</span></div><div class="sub">Spärrade: '+didBlock[omr].map(([f,t])=>diId(omr,f)+'–'+diId(omr,t)).join(", ")+' · nästa lediga: <b>'+peekNextDi(omr)+'</b></div></div>').join(""):'<div class="hint" style="color:var(--muted)">Inga spärrade intervall.</div>';
+  dbPreview();}
 function nextSuffix(comps,typ){const base=PREF[typ]||6;const n=comps.filter(c=>c.typ===typ).length;return n===0?base:base*10+n;}
 
 function omrOptions(){const used=[...new Set(objects.map(o=>o.omr))].sort();
@@ -467,11 +518,13 @@ function resetArea(omr){
   if(!omr){toast("Välj ett område i rullgardinen först");return;}
   const cnt=objects.filter(o=>o.omr===omr&&o.di).length;
   if(!cnt){toast("Inga tilldelade Dörr-id i "+omr);return;}
-  const typed=prompt("ÅTERSTÄLL Dörr-id för område "+omr+(OMRADE[omr]?" ("+OMRADE[omr]+")":"")+"?\n\n• Tar bort bas-Dörr-id från "+cnt+" objekt\n• Frigör poolen så nästa tilldelning börjar om på 2001\n• Komponenter/enheter behålls\n\nSkriv områdeskoden ("+omr+") för att bekräfta:");
+  const blk=(didBlock[omr]||[]);const startTxt=blk.length?("direkt efter spärrade nummer ("+blk.map(([f,t])=>f+"–"+t).join(", ")+")"):"på 2001";
+  const typed=prompt("ÅTERSTÄLL Dörr-id för område "+omr+(OMRADE[omr]?" ("+OMRADE[omr]+")":"")+"?\n\n• Tar bort bas-Dörr-id från "+cnt+" objekt\n• Frigör poolen så nästa tilldelning börjar om "+startTxt+"\n• Komponenter/enheter behålls\n\nSkriv områdeskoden ("+omr+") för att bekräfta:");
   if(typed===null)return;
   if(typed.trim()!==omr){toast("Fel områdeskod angiven – återställning avbruten");return;}
   let n=0;objects.forEach(o=>{if(o.omr===omr&&o.di){o.di="";o.diAssigned=false;o.ts=new Date().toISOString();n++;}});
   const rx=new RegExp("^DI"+omr);Object.keys(didReserved).forEach(id=>{if(rx.test(id))delete didReserved[id];});
+  applyBlocks(omr); // spärrade (tidigare använda) nummer ska aldrig frigöras
   saveReserved();persist();refreshAll();toast("Återställde "+n+" Dörr-id i "+omr+" – börja om med Tilldela alla");
 }
 function bulkAssign(){
@@ -519,7 +572,43 @@ async function pdfFirstPageDataURL(file){
   const cv=document.createElement("canvas");cv.width=vp.width;cv.height=vp.height;await page.render({canvasContext:cv.getContext("2d"),viewport:vp}).promise;
   return cv.toDataURL("image/jpeg",0.82);
 }
-function parseRitName(name){const b=name.replace(/\.[^.]+$/,"");const m=b.match(/(\d{4})\D{0,3}(\d{1,3})/);return m?(m[1]+"-"+m[2].padStart(3,"0")):null;}
+// Flera ritningar per hus: "0329-001.pdf" = huvudritning (RIT_0329-001), "0329-001 Källare.pdf" = RIT_0329-001-kallare.
+// Namnet efter husnumret blir ritningens namn; nyckeln får bara a–z, 0–9 och _ (servern tillåter inget annat).
+function ritSlug(s){return String(s||"").normalize("NFD").replace(/[̀-ͯ]/g,"").toLowerCase().replace(/[^a-z0-9]+/g,"_").replace(/^_+|_+$/g,"");}
+function ritNameInfo(name){const b=String(name||"").replace(/\.[^.]+$/,"");const m=b.match(/(\d{4})\D{0,3}(\d{1,3})/);if(!m)return null;
+  const rest=b.slice(m.index+m[0].length).replace(/\s*\(\d+\)\s*$/,"").replace(/^[\s\-_.,:;·]+|[\s\-_.,:;·]+$/g,"").replace(/[_]+/g," ").trim();
+  return {omr:m[1],b3:m[2].padStart(3,"0"),label:rest};}
+function parseRitName(name){const p=ritNameInfo(name);if(!p)return null;const v=ritSlug(p.label);return p.omr+"-"+p.b3+(v?"-"+v:"");}
+function ritBuild(omr,b3,v){return "RIT_"+omr+"-"+b3+(v?"-"+v:"");}
+// Vilken ritning en placering hör till. Placeringar utan mark.v (alla gamla) hör till huvudritningen.
+function markKey(x){return x&&x.mark?ritBuild(x.omr,byg3(x),x.mark.v||""):"";}
+function ritPlaced(k){return objects.filter(x=>x.mark&&markKey(x)===k);}
+function ritLabelOf(k){const p=ritKeyParts(k);if(!p.v)return "";
+  const s=ritServer&&ritServer[k],sm=(s&&s.meta)||{},m=ritMeta[k]||{};
+  for(const l of [m.label,sm.namn]){if(l&&ritSlug(l)===p.v)return l;}
+  const files=[m.file,sm.fil];
+  for(const f of files){const i=f&&ritNameInfo(f);if(i&&i.label&&ritSlug(i.label)===p.v)return i.label;}
+  const t=p.v.replace(/_/g," ");return t.charAt(0).toUpperCase()+t.slice(1);}
+function ritDisp(k){const p=ritKeyParts(k),l=ritLabelOf(k);return p.omr+"-"+p.b3+(l?" · "+l:"");}
+function ritFileBase(k){const p=ritKeyParts(k),l=ritLabelOf(k);return (p.omr+"-"+p.b3+(l?" "+l:"")).replace(/[\\/:*?"<>|]+/g,"_");}
+function ritSortKeys(ks){return ks.slice().sort((a,b)=>{const va=ritKeyParts(a).v,vb=ritKeyParts(b).v;if(!va!==!vb)return va?1:-1;return ritLabelOf(a).localeCompare(ritLabelOf(b),'sv',{numeric:true});});}
+async function ritLocalKeysFor(omr,b3){const base="RIT_"+omr+"-"+b3;return ritSortKeys((await photoKeys()).filter(k=>typeof k==="string"&&(k===base||k.indexOf(base+"-")===0)));}
+let ritLastPick={};
+// Väljare när ett hus har flera ritningar. Returnerar vald nyckel, eller null vid Avbryt.
+function ritChoose(ks,title,curKey){
+  const hk=ritKeyParts(ks[0]),last=ritLastPick[hk.omr+"-"+hk.b3];
+  return new Promise(res=>{const ov=document.createElement("div");ov.className="ritask";
+    ov.innerHTML='<div class="box"><div style="font-family:var(--disp);font-weight:700;font-size:17px">'+htm(title)+'</div><div class="hint" style="margin-top:4px">Hus '+htm(hk.omr+"-"+hk.b3)+' har '+ks.length+' ritningar – välj vilken.</div>'+
+      '<div class="ritpick">'+ks.map((k,i)=>{const n=ritPlaced(k).length,isCur=k===curKey;
+        return '<button data-i="'+i+'" class="'+(isCur?'cur':'')+'"><span class="pth"></span><span><div class="pnm">'+htm(ritLabelOf(k)||"Huvudritning")+(isCur?'<span class="tag">Dörren är placerad här</span>':'')+(!isCur&&k===last?'<span class="tag last">Senast vald</span>':'')+'</div><div class="psub">'+htm(ritDisp(k))+' · '+n+(n===1?' dörr placerad':' dörrar placerade')+'</div></span></button>';}).join("")+'</div>'+
+      '<div class="btns"><button class="btn ghost" data-x="1" style="flex:1">Avbryt</button></div></div>';
+    document.body.appendChild(ov);
+    ov.querySelectorAll(".ritpick button").forEach(bt=>bt.onclick=()=>{const k=ks[+bt.dataset.i];ritLastPick[hk.omr+"-"+hk.b3]=k;ov.remove();res(k);});
+    ov.querySelector("[data-x]").onclick=()=>{ov.remove();res(null);};
+    ov.onclick=e=>{if(e.target===ov){ov.remove();res(null);}};
+    ov.querySelectorAll(".ritpick button").forEach(async bt=>{const t=await ritThumb(ks[+bt.dataset.i]);if(t)bt.querySelector(".pth").style.backgroundImage="url("+t+")";});
+  });
+}
 // ===== Ritningar: versionskontroll, överblick och skydd mot dubbletter =====
 // ritMeta finns bara på den här enheten och synkas inte. Per ritning:
 //   file/date  – originalfil och när den importerades
@@ -531,7 +620,7 @@ let ritMeta={};let ritServer=null;let ritFilter="";let ritReplaceKey=null;
 function saveRitMeta(){store.set("uh_ritmeta",JSON.stringify(ritMeta));}
 function htm(s){return String(s==null?"":s).replace(/[&<>"]/g,c=>({"&":"&amp;","<":"&lt;",">":"&gt;",'"':"&quot;"}[c]));}
 function ritBase(){return (serverUrl||"").replace(/\/+$/,"");}
-function ritKeyParts(k){const p=k.replace(/^RIT_/,"").split("-");return {omr:p[0],b3:p[1]||""};}
+function ritKeyParts(k){const p=String(k||"").replace(/^RIT_/,"").split("-");return {omr:p[0],b3:p[1]||"",v:p.slice(2).join("-")};}
 function ritObjects(k){const p=ritKeyParts(k);return objects.filter(x=>x.omr===p.omr&&byg3(x)===p.b3);}
 function ritAddr(k){const o=ritObjects(k).find(x=>x.bygN);return o?o.bygN:"";}
 async function shaOfDataURL(d){
@@ -561,7 +650,7 @@ async function ritFetchServerImage(k,sha,ver){
 async function ritDownload(k,s){
   const d=await ritFetchServerImage(k,s.sha);if(!d)return false;
   await photoPut(k,d);const sha=(await shaOfDataURL(d))||s.sha;const sm=s.meta||{};
-  ritMeta[k]={file:sm.fil||"",date:sm.importerad||sm.uppladdad||"",sha,seen:s.sha};saveRitMeta();return true;
+  ritMeta[k]={file:sm.fil||"",label:sm.namn||"",date:sm.importerad||sm.uppladdad||"",sha,seen:s.sha};saveRitMeta();return true;
 }
 async function ritPost(k,body){
   try{return await fetch(ritBase()+"/api/photo",{method:"POST",headers:{"Content-Type":"application/json"},body:JSON.stringify(Object.assign({id:k},body))});}catch(e){return null;}
@@ -584,7 +673,7 @@ async function syncRitningar(){
     if(!s&&!m.pending&&m.seen&&m.seen===lsha){await photoDel(k);await photoDel("THUMB_"+k);delete ritMeta[k];continue;} // borttagen på en annan enhet (finns i serverns arkiv)
     if(m.pending||!s){
       const d=await photoGet(k);if(!d)continue;
-      const r=await ritPost(k,{data:d,replace:m.pending==="replace",meta:{fil:m.file||"",importerad:m.date||""}});
+      const r=await ritPost(k,{data:d,replace:m.pending==="replace",meta:{fil:m.file||"",importerad:m.date||"",namn:m.label||ritLabelOf(k)}});
       if(r&&r.ok){const j=await r.json().catch(()=>({}));m.seen=j.sha||lsha;delete m.pending;delete m.conflict;}
       else if(r&&r.status===409){delete m.pending;m.conflict=true;}
       continue;
@@ -612,7 +701,7 @@ async function importRitningar(files,forceKey){
   Object.keys(groups).forEach(k=>{if(groups[k].length>1){fail.push(groups[k].map(f=>f.name).join(" + ")+" blir alla "+k+" – ingen av dem importerades, välj rätt fil och importera den för sig");delete groups[k];}});
   const localSet=new Set((await photoKeys()).filter(k=>typeof k==="string"&&k.indexOf("RIT_")===0));
   const srv=await ritFetchInfo();
-  let added=0,replaced=0,same=0,kept=0;
+  let added=0,replaced=0,same=0,kept=0;const doneNames=[];
   for(const key of Object.keys(groups).sort()){
     const f=groups[key][0],rk="RIT_"+key;let data;
     try{data=await ritPrepare(f);}catch(e){fail.push(f.name+" (kunde inte läsas)");continue;}
@@ -623,9 +712,9 @@ async function importRitningar(files,forceKey){
       if(sha&&curSha&&sha===curSha){same++;continue;}
       const curData=hasLocal?await photoGet(rk):await ritFetchServerImage(rk,srv[rk].sha);
       const m=ritMeta[rk]||{},sm=(hasSrv&&srv[rk].meta)||{};
-      const placed=ritObjects(rk).filter(x=>x.mark).length;
+      const placed=ritPlaced(rk).length;
       const ok=await ritAsk(
-        '<div style="font-family:var(--disp);font-weight:700;font-size:17px">Ritning '+htm(key)+' finns redan</div>'+
+        '<div style="font-family:var(--disp);font-weight:700;font-size:17px">Ritning '+htm(ritDisp(rk))+' finns redan</div>'+
         '<div class="hint" style="margin-top:4px">'+htm(OMRADE[key.slice(0,4)]||"")+(ritAddr(rk)?' · '+htm(ritAddr(rk)):'')+'</div>'+
         (placed?'<div class="ritwarn"><b>'+placed+' dörrar är placerade på nuvarande ritning.</b> Placeringarna ligger kvar på samma ställe i bilden – ser den nya ritningen annorlunda ut hamnar de fel.</div>':'')+
         '<div class="cmp"><div><b style="font-size:13px">Nuvarande</b>'+(curData?'<img src="'+curData+'">':'<div class="empty" style="margin:6px 0;padding:20px 8px">Kunde inte visas</div>')+'<div class="cap">'+htm(m.file||sm.fil||"okänd fil")+' · '+htm(ritFmt(m.date||sm.importerad||sm.uppladdad))+'</div></div>'+
@@ -637,18 +726,19 @@ async function importRitningar(files,forceKey){
     }else added++;
     await photoPut(rk,data);
     const prev=ritMeta[rk]||{};
-    ritMeta[rk]={file:f.name,date:new Date().toISOString(),sha,seen:prev.seen||"",pending:(hasLocal||hasSrv)?"replace":"new"};
-    saveRitMeta();
+    const lbl=ritKeyParts(rk).v?(forceKey?ritLabelOf(rk):((ritNameInfo(f.name)||{}).label||"")):"";
+    ritMeta[rk]={file:f.name,label:lbl,date:new Date().toISOString(),sha,seen:prev.seen||"",pending:(hasLocal||hasSrv)?"replace":"new"};
+    saveRitMeta();doneNames.push(ritDisp(rk));
   }
   const parts=[];if(added)parts.push(added+" nya");if(replaced)parts.push(replaced+" ersatta");if(same)parts.push(same+" identiska (redan inlästa)");if(kept)parts.push(kept+" behölls oförändrade");
-  if(res)res.innerHTML=(parts.length?"✓ "+htm(parts.join(", "))+".":"Inget importerades.")+(fail.length?'<br><span style="color:var(--accent-deep)">Hoppade över: '+fail.map(htm).join("; ")+"</span>":"");
+  if(res)res.innerHTML=(parts.length?"✓ "+htm(parts.join(", "))+".":"Inget importerades.")+(doneNames.length?'<br><span style="color:var(--muted)">Inlästa: '+doneNames.map(htm).join("; ")+'</span>':'')+(fail.length?'<br><span style="color:var(--accent-deep)">Hoppade över: '+fail.map(htm).join("; ")+"</span>":"");
   toast(parts.length?parts.join(", "):"Inget importerades");
   if(added||replaced){await syncRitningar();} // skicka direkt så att andra enheter inte fortsätter på en gammal ritning
   renderRitList();
 }
 async function deleteRitning(key){
-  const placed=ritObjects(key).filter(x=>x.mark).length;
-  const ok=await ritAsk('<div style="font-family:var(--disp);font-weight:700;font-size:17px">Ta bort ritning '+htm(key.replace(/^RIT_/,""))+'?</div>'+
+  const placed=ritPlaced(key).length;
+  const ok=await ritAsk('<div style="font-family:var(--disp);font-weight:700;font-size:17px">Ta bort ritning '+htm(ritDisp(key))+'?</div>'+
     (placed?'<div class="ritwarn"><b>'+placed+' dörrar är placerade på ritningen.</b> Placeringarna finns kvar på dörrarna.</div>':'')+
     '<div class="hint" style="margin-top:10px">Tas bort på alla enheter vid synk. Ritningen sparas i serverns arkiv och kan återställas.</div>',
     [{label:"Avbryt",value:false},{label:"Ta bort",value:true,primary:true}]);
@@ -659,25 +749,25 @@ async function deleteRitning(key){
   toast("Ritning borttagen (sparad i arkivet)");renderRitList();
 }
 async function ritUseMine(k){
-  const ok=await ritAsk('<div style="font-family:var(--disp);font-weight:700;font-size:17px">Använd den här enhetens '+htm(k.replace(/^RIT_/,""))+' för alla?</div><div class="hint" style="margin-top:8px">Serverns version sparas i arkivet. Övriga enheter får den här versionen vid nästa synk.</div>',[{label:"Avbryt",value:false},{label:"Använd min",value:true,primary:true}]);
+  const ok=await ritAsk('<div style="font-family:var(--disp);font-weight:700;font-size:17px">Använd den här enhetens '+htm(ritDisp(k))+' för alla?</div><div class="hint" style="margin-top:8px">Serverns version sparas i arkivet. Övriga enheter får den här versionen vid nästa synk.</div>',[{label:"Avbryt",value:false},{label:"Använd min",value:true,primary:true}]);
   if(!ok)return;const m=ritMeta[k]=ritMeta[k]||{};m.pending="replace";delete m.conflict;saveRitMeta();
   await syncRitningar();toast(ritMeta[k]&&ritMeta[k].pending?"Ingen kontakt – skickas vid nästa synk":"Din version gäller nu för alla");renderRitList();
 }
 async function ritUseServer(k){
   const s=ritServer&&ritServer[k];if(!s){toast("Ingen kontakt med servern");return;}
-  const ok=await ritAsk('<div style="font-family:var(--disp);font-weight:700;font-size:17px">Hämta serverns '+htm(k.replace(/^RIT_/,""))+'?</div><div class="hint" style="margin-top:8px">Den här enhetens version sparas först i serverns arkiv, så den går att återställa.</div>',[{label:"Avbryt",value:false},{label:"Hämta serverns",value:true,primary:true}]);
+  const ok=await ritAsk('<div style="font-family:var(--disp);font-weight:700;font-size:17px">Hämta serverns '+htm(ritDisp(k))+'?</div><div class="hint" style="margin-top:8px">Den här enhetens version sparas först i serverns arkiv, så den går att återställa.</div>',[{label:"Avbryt",value:false},{label:"Hämta serverns",value:true,primary:true}]);
   if(!ok)return;
   const d=await photoGet(k),m=ritMeta[k]||{};
-  if(d){const r=await ritPost(k,{data:d,archiveOnly:true,meta:{fil:m.file||"",importerad:m.date||"",kalla:"enhet"}});if(!r||!r.ok){toast("Kunde inte spara enhetens version – avbryter");return;}}
+  if(d){const r=await ritPost(k,{data:d,archiveOnly:true,meta:{fil:m.file||"",importerad:m.date||"",kalla:"enhet",namn:m.label||ritLabelOf(k)}});if(!r||!r.ok){toast("Kunde inte spara enhetens version – avbryter");return;}}
   toast((await ritDownload(k,s))?"Serverns version hämtad":"Kunde inte hämta serverns version");await ritFetchInfo();renderRitList();
 }
 async function ritViewServer(k,ver,title,sha){
   const d=await ritFetchServerImage(k,sha,ver);if(!d){toast("Kunde inte hämta ritningen från servern");return;}
-  const p=ritKeyParts(k);openRitningView(p.omr,p.b3,{img:d,title,sha});
+  const p=ritKeyParts(k);openRitningView(p.omr,p.b3,{img:d,title,sha,key:k});
 }
 async function ritVersions(k){
   let list=null;try{const r=await fetch(ritBase()+"/api/ritarkiv/"+encodeURIComponent(k),{cache:"no-store"});if(r.ok)list=(await r.json()).versions||[];}catch(e){}
-  const name=k.replace(/^RIT_/,"");
+  const name=ritDisp(k);
   $("sheet").innerHTML='<div class="gripbar"><div class="ttl">Tidigare versioner · '+htm(name)+'<small>Sparade på servern</small></div><button id="rvvClose">×</button></div>'+
     '<div class="wrap">'+(list===null?'<div class="empty">Ingen kontakt med servern.</div>':(!list.length?'<div class="empty">Inga tidigare versioner sparade.</div>':
     list.map((v,i)=>'<div class="ritrow"><div class="th" data-i="'+i+'"></div><div class="inf"><div class="nm">'+htm(ritFmt(v.arkiverad))+'</div><div class="sub">'+htm(v.orsak||"")+' · '+htm(v.fil||"okänd fil")+(v.importerad?' · importerad '+htm(ritFmt(v.importerad)):'')+'</div><div class="ritact"><button class="vv" data-i="'+i+'">Visa med placeringar</button><button class="vr" data-i="'+i+'">Återställ</button></div></div></div>').join("")))+'</div>'+
@@ -699,7 +789,8 @@ async function renderRitList(){
   const all=[...new Set(keys.concat(srv?Object.keys(srv):[]))].sort();
   if(!all.length){host.innerHTML='<div class="hint" style="color:var(--muted)">Inga ritningar inlästa än.</div>';ritRenderArchived(host,local);return;}
   const rows=all.map(k=>{
-    const m=ritMeta[k]||{},s=srv&&srv[k],p=ritKeyParts(k),objs=ritObjects(k),placed=objs.filter(x=>x.mark);
+    const m=ritMeta[k]||{},s=srv&&srv[k],p=ritKeyParts(k),objs=ritObjects(k),placed=ritPlaced(k);
+    const sib=all.filter(x=>{const q=ritKeyParts(x);return q.omr===p.omr&&q.b3===p.b3;}).length,lbl=ritLabelOf(k);
     const other=m.sha?placed.filter(x=>x.mark.rit&&x.mark.rit!==m.sha).length:0;
     let st,cls;
     if(!local.has(k)){st="Finns på servern – hämtas vid nästa synk";cls="wait";}
@@ -710,10 +801,10 @@ async function renderRitList(){
     else if(m.sha&&s.sha===m.sha){st="Synkad";cls="ok";}
     else{st="Kontrolleras vid nästa synk";cls="wait";}
     const sm=(s&&s.meta)||{},file=m.file||sm.fil||"",date=m.date||sm.importerad||sm.uppladdad||"",arch=(s&&s.arkiv)||0,addr=ritAddr(k);
-    const text=(k+" "+(OMRADE[p.omr]||"")+" "+addr+" "+file).toLowerCase();
+    const text=(k+" "+p.omr+"-"+p.b3+" "+lbl+" "+(OMRADE[p.omr]||"")+" "+addr+" "+file).toLowerCase();
     const html='<div class="ritrow" data-k="'+htm(k)+'" data-t="'+htm(text)+'"><div class="th" data-k="'+htm(k)+'" title="Visa"></div><div class="inf">'+
-      '<div class="nm">'+htm(k.replace(/^RIT_/,""))+' <span class="on">'+htm(OMRADE[p.omr]||"")+'</span></div>'+
-      '<div class="sub">'+(addr?htm(addr)+' · ':'')+(file?htm(file)+' · ':'')+'importerad '+htm(ritFmt(date))+' · <b>'+placed.length+'</b> av '+objs.length+' dörrar placerade</div>'+
+      '<div class="nm">'+htm(p.omr+"-"+p.b3)+(lbl?' · '+htm(lbl):(sib>1?' · Huvudritning':''))+' <span class="on">'+htm(OMRADE[p.omr]||"")+'</span></div>'+
+      '<div class="sub">'+(addr?htm(addr)+' · ':'')+(file?htm(file)+' · ':'')+'importerad '+htm(ritFmt(date))+' · '+(sib>1?('<b>'+placed.length+'</b> dörrar placerade här ('+sib+' ritningar, '+objs.length+' dörrar i huset)'):('<b>'+placed.length+'</b> av '+objs.length+' dörrar placerade'))+'</div>'+
       (other?'<div class="sub" style="color:#a14b0c"><b>⚠ '+other+' dörrar placerades på en annan version av ritningen</b></div>':'')+
       '<span class="ritst '+cls+'">'+htm(st)+'</span>'+
       '<div class="ritact">'+(local.has(k)?'<button class="a-view">Visa</button>':'<button class="a-vsrv">Visa</button>')+
@@ -730,8 +821,8 @@ async function renderRitList(){
   const si=host.querySelector("#ritSearch");si.oninput=()=>{ritFilter=si.value;applyFilter();};applyFilter();
   host.querySelectorAll(".ritrow").forEach(row=>{const k=row.dataset.k,p=ritKeyParts(k),s=srv&&srv[k];
     const on=(sel,fn)=>{const b=row.querySelector(sel);if(b)b.onclick=fn;};
-    on(".a-view",()=>openRitningView(p.omr,p.b3));
-    on(".th",()=>local.has(k)?openRitningView(p.omr,p.b3):(s&&ritViewServer(k,"","Serverns version",s.sha)));
+    on(".a-view",()=>openRitningView(p.omr,p.b3,{key:k}));
+    on(".th",()=>local.has(k)?openRitningView(p.omr,p.b3,{key:k}):(s&&ritViewServer(k,"","Serverns version",s.sha)));
     row.querySelectorAll(".a-vsrv").forEach(b=>b.onclick=()=>s&&ritViewServer(k,"","Serverns version",s.sha));
     on(".a-mine",()=>ritUseMine(k));on(".a-srv",()=>ritUseServer(k));
     on(".a-repl",()=>{ritReplaceKey=k.replace(/^RIT_/,"");$("ritReplaceFile").click();});
@@ -745,24 +836,29 @@ async function ritRenderArchived(host,present){
   const box=host.querySelector("#ritArch")||host.appendChild(Object.assign(document.createElement("div"),{id:"ritArch"}));
   const gone=keys?Object.keys(keys).filter(k=>!present.has(k)).sort():[];
   if(!gone.length){box.innerHTML="";return;}
-  box.innerHTML='<div class="hint" style="margin:16px 0 4px"><b>Borttagna ritningar i arkivet</b></div>'+gone.map(k=>'<div class="ritrow"><div class="inf"><div class="nm">'+htm(k.replace(/^RIT_/,""))+' <span class="on">'+htm(OMRADE[ritKeyParts(k).omr]||"")+'</span></div><div class="ritact"><button data-k="'+htm(k)+'">Versioner ('+keys[k]+')</button></div></div></div>').join("");
+  box.innerHTML='<div class="hint" style="margin:16px 0 4px"><b>Borttagna ritningar i arkivet</b></div>'+gone.map(k=>'<div class="ritrow"><div class="inf"><div class="nm">'+htm(ritDisp(k))+' <span class="on">'+htm(OMRADE[ritKeyParts(k).omr]||"")+'</span></div><div class="ritact"><button data-k="'+htm(k)+'">Versioner ('+keys[k]+')</button></div></div></div>').join("");
   box.querySelectorAll("button[data-k]").forEach(b=>b.onclick=()=>ritVersions(b.dataset.k));
 }
 async function openRitningView(omr,byg,opt){opt=opt||{};
-  const b3=String(byg||"").padStart(3,"0");const img=opt.img||await photoGet("RIT_"+omr+"-"+b3);
-  const curSha=opt.sha||((ritMeta["RIT_"+omr+"-"+b3]||{}).sha)||"";const isOther=x=>!!(x.mark&&x.mark.rit&&curSha&&x.mark.rit!==curSha);
-  const head='<div class="gripbar"><div class="ttl">Ritning · Hus '+b3+(opt.title?' · '+htm(opt.title):'')+'<small>'+omr+' · '+(OMRADE[omr]||"")+'</small></div><button id="rvClose">×</button></div>';
-  if(!img){$("sheet").innerHTML=head+'<div class="wrap"><div class="card"><div class="body"><div class="empty" style="padding:28px 14px;line-height:1.7">Ingen ritning importerad för <b>'+omr+'-'+b3+'</b>.<br><small style="color:var(--muted)">Importera en ritning döpt '+omr+'-'+b3+' under fliken Importera.</small></div></div></div></div><div class="savezone"><button class="btn primary" id="rvDone" style="flex:1">Klar</button></div>';showSheet();$("sheet").querySelector("#rvClose").onclick=closeRecord;$("sheet").querySelector("#rvDone").onclick=closeRecord;return;}
+  const b3=String(byg||"").padStart(3,"0");
+  const ks=await ritLocalKeysFor(omr,b3);let rk=opt.key;
+  if(!rk){if(ks.length>1){rk=await ritChoose(ks,"Visa ritning",null);if(!rk)return;}else rk=ks[0]||ritBuild(omr,b3,"");}
+  const img=opt.img||await photoGet(rk);const vl=ritLabelOf(rk);
+  const curSha=opt.sha||((ritMeta[rk]||{}).sha)||"";const isOther=x=>!!(x.mark&&x.mark.rit&&curSha&&x.mark.rit!==curSha);
+  const head='<div class="gripbar"><div class="ttl">Ritning · Hus '+b3+(vl?' · '+htm(vl):'')+(opt.title?' · '+htm(opt.title):'')+'<small>'+omr+' · '+(OMRADE[omr]||"")+'</small></div><button id="rvClose">×</button></div>';
+  if(!img){$("sheet").innerHTML=head+'<div class="wrap"><div class="card"><div class="body"><div class="empty" style="padding:28px 14px;line-height:1.7">Ingen ritning importerad för <b>'+omr+'-'+b3+'</b>.<br><small style="color:var(--muted)">Importera en ritning döpt '+omr+'-'+b3+' (eller t.ex. "'+omr+'-'+b3+' Plan 1" om huset har flera) under fliken Importera.</small></div></div></div></div><div class="savezone"><button class="btn primary" id="rvDone" style="flex:1">Klar</button></div>';showSheet();$("sheet").querySelector("#rvClose").onclick=closeRecord;$("sheet").querySelector("#rvDone").onclick=closeRecord;return;}
   const lbl=x=>(x.di?String(x.di).slice(-4):(x.lgh||""));
-  const doors=objects.filter(x=>x.omr===omr&&byg3(x)===b3&&x.mark);
+  const doors=objects.filter(x=>x.mark&&markKey(x)===rk);
+  const canSwitch=!opt.img&&ks.length>1;
   const nOther=doors.filter(isOther).length;
   const dot=x=>'<div class="mk tap '+(isDone(x)?'done':'todo')+(hasAptus(x)?' aptus':'')+(isOther(x)?' other':'')+'" data-k="'+x.key+'" style="left:'+(x.mark.x*100)+'%;top:'+(x.mark.y*100)+'%">'+esc(lbl(x))+'</div>';
   $("sheet").innerHTML=head+
     '<div id="rvView" class="plview"><div id="rvStage" class="plstage"><img id="rvImg" src="'+img+'" draggable="false">'+doors.map(dot).join("")+'</div>'+
     '<div class="plzoom"><button id="rvIn">+</button><button id="rvOut">\u2212</button><button id="rvFit">\u2922</button></div></div>'+
     '<div class="hint" style="padding:8px 14px">'+doors.length+' placerade dörrar \u00b7 grön = klar, röd = ej klar, gul = Aptus (kanten visar klar/ej klar) \u00b7 tryck på en markör för att öppna dörren.'+(nOther?' <b style="color:#a14b0c">Orange streckad = '+nOther+' placerade på en annan version av ritningen.</b>':'')+'</div>'+
-    '<div class="savezone"><button class="btn primary" id="rvDone" style="flex:1">Klar</button></div>';
+    '<div class="savezone">'+(canSwitch?'<button class="btn ghost" id="rvSwitch" style="flex:1">Byt ritning ('+ks.length+')</button>':'')+'<button class="btn primary" id="rvDone" style="flex:1">Klar</button></div>';
   showSheet();const S=$("sheet");
+  if(canSwitch)S.querySelector("#rvSwitch").onclick=async()=>{const k2=await ritChoose(ks,"Byt ritning",null);if(k2&&k2!==rk)openRitningView(omr,b3,{key:k2});};
   const view=S.querySelector("#rvView"),stage=S.querySelector("#rvStage");
   let scale=1,tx=0,ty=0;function apply(){stage.style.transform="translate("+tx+"px,"+ty+"px) scale("+scale+")";stage.style.setProperty("--mks",1/scale);}apply();
   const pts=new Map();let mode=null,sx,sy,tx0,ty0,pd0,sc0,mid0,tapKey;
@@ -784,7 +880,7 @@ async function openRitningView(omr,byg,opt){opt=opt||{};
 // Dörrar med någon Aptus-enhet visas gula på ritningen (kanten visar klar/ej klar).
 const APTUS_TYPER=new Set(["Kortläsare","Porttelefon","Bokningstavla"]);
 function hasAptus(o){return (o.components||[]).some(c=>APTUS_TYPER.has(c.typ));}
-function ritDoors(key){const p=key.replace(/^RIT_/,"").split("-");const omr=p[0],b3=p[1]||"";return objects.filter(x=>x.omr===omr&&byg3(x)===b3&&x.mark&&isFinite(x.mark.x)&&isFinite(x.mark.y));}
+function ritDoors(key){return objects.filter(x=>x.mark&&markKey(x)===key&&isFinite(x.mark.x)&&isFinite(x.mark.y));}
 function ritLabel(x){return x.di?String(x.di).slice(-4):(x.lgh||"");}
 // Hur "ritad" en yta är (0 = tomt papper, 1 = helsvart) – används för att lägga etiketter där ritningen är tom.
 function ritDarkMap(img,iw,ih){
@@ -862,7 +958,7 @@ async function composeRit(key){
 function ritPositionSheets(keys){
   const head=["Dörr-id","X (%)","Y (%)","Etikett på ritning","Benämning","Lägenhet","Hyresobjekt","Enheter (Dörr-id)","Klar"];
   const pct=v=>Math.round(v*10000)/100,per={},all=[["Ritning"].concat(head)];
-  keys.slice().sort().forEach(k=>{const name=k.replace(/^RIT_/,"");
+  keys.slice().sort().forEach(k=>{const name=ritFileBase(k);
     const rows=ritDoors(k).slice().sort((a,b)=>String(a.di||a.lgh||"").localeCompare(String(b.di||b.lgh||""),'sv')).map(x=>[x.di||"",pct(x.mark.x),pct(x.mark.y),ritLabel(x),benLabel(x),x.lgh||"",x.hyres||"",(x.components||[]).map(c=>(x.di||"")+"-"+c.suffix).join(" | "),isDone(x)?"Ja":"Nej"]);
     if(!rows.length)return;per[name]=[head].concat(rows);rows.forEach(r=>all.push([name].concat(r)));});
   return {all,per};
@@ -875,40 +971,47 @@ async function exportRitningar(){
   try{
     if(!window.JSZip)await loadScript("https://cdnjs.cloudflare.com/ajax/libs/jszip/3.10.1/jszip.min.js");
     const zip=new JSZip();
-    for(const k of keys){let d=null;try{d=await composeRit(k);}catch(e){d=await photoGet(k);}if(!d||d.indexOf(",")<0)continue;zip.file(k.replace(/^RIT_/,"")+".jpg",d.split(",")[1],{base64:true});}
+    for(const k of keys){let d=null;try{d=await composeRit(k);}catch(e){d=await photoGet(k);}if(!d||d.indexOf(",")<0)continue;zip.file(ritFileBase(k)+".jpg",d.split(",")[1],{base64:true});}
     const pos=ritPositionSheets(keys);
     if(pos.all.length>1){
-      if(window.XLSX){const wb=XLSX.utils.book_new();XLSX.utils.book_append_sheet(wb,XLSX.utils.aoa_to_sheet(pos.all),"Alla");Object.keys(pos.per).forEach(n=>XLSX.utils.book_append_sheet(wb,XLSX.utils.aoa_to_sheet(pos.per[n]),n.slice(0,31)));zip.file("dorrpositioner.xlsx",XLSX.write(wb,{type:"base64",bookType:"xlsx"}),{base64:true});}
+      if(window.XLSX){const wb=XLSX.utils.book_new();XLSX.utils.book_append_sheet(wb,XLSX.utils.aoa_to_sheet(pos.all),"Alla");const usedSh=new Set(["alla"]);Object.keys(pos.per).forEach(n=>{let sn=n.replace(/[\[\]:*?\/\\]/g,"_").slice(0,31),i=2;while(usedSh.has(sn.toLowerCase())){sn=n.slice(0,27)+" ("+(i++)+")";}usedSh.add(sn.toLowerCase());XLSX.utils.book_append_sheet(wb,XLSX.utils.aoa_to_sheet(pos.per[n]),sn);});zip.file("dorrpositioner.xlsx",XLSX.write(wb,{type:"base64",bookType:"xlsx"}),{base64:true});}
       else zip.file("dorrpositioner.csv","\uFEFF"+pos.all.map(r=>r.map(cc).join(";")).join("\r\n"));
     }
     const blob=await zip.generateAsync({type:"blob"});const url=URL.createObjectURL(blob);const a=document.createElement("a");a.href=url;a.download="ritningar_"+stamp()+".zip";document.body.appendChild(a);a.click();a.remove();setTimeout(()=>URL.revokeObjectURL(url),3000);
     toast(keys.length+" ritningar exporterade");
   }catch(e){toast("Kunde inte exportera ritningar");}
 }
-async function openPlacera(key){
-  const o=objects.find(x=>x.key===key);if(!o)return;placeKey=key;
-  const rk=ritKey(o);const img=await photoGet(rk);const rsha=img?await ritLocalSha(rk):"";
-  const head='<div class="gripbar"><div class="ttl">Placera · '+esc(rowHead(o))+'<small>Hus '+byg3(o)+(o.ing?' · ing '+o.ing:'')+' · '+(o.di||'')+'</small></div><button id="plClose">×</button></div>';
+async function openPlacera(key,rkOpt){
+  const o=objects.find(x=>x.key===key);if(!o)return;
+  const ks=await ritLocalKeysFor(o.omr,byg3(o));let rk=rkOpt;
+  // Flera ritningar för huset → välj. Dörrens nuvarande ritning markeras i väljaren.
+  if(!rk){if(ks.length>1){rk=await ritChoose(ks,"Placera "+(o.di||rowHead(o)),o.mark?markKey(o):null);if(!rk)return;}else rk=ks[0]||ritKey(o);}
+  placeKey=key;
+  const img=await photoGet(rk);const rsha=img?await ritLocalSha(rk):"";const rv=ritKeyParts(rk).v,vl=ritLabelOf(rk);
+  const head='<div class="gripbar"><div class="ttl">Placera · '+esc(rowHead(o))+'<small>Hus '+byg3(o)+(vl?' · '+htm(vl):'')+(o.ing?' · ing '+o.ing:'')+' · '+(o.di||'')+'</small></div><button id="plClose">×</button></div>';
   if(!img){
-    $("sheet").innerHTML=head+'<div class="wrap"><div class="card"><div class="body"><div class="empty" style="padding:28px 14px;line-height:1.7">Ingen ritning importerad för <b>'+o.omr+'-'+byg3(o)+'</b>.<br><small style="color:var(--muted)">Importera en ritning döpt '+o.omr+'-'+byg3(o)+' (bild eller PDF) under fliken Importera.</small></div></div></div></div><div class="savezone"><button class="btn primary" id="plDone" style="flex:1">Klar</button></div>';
+    $("sheet").innerHTML=head+'<div class="wrap"><div class="card"><div class="body"><div class="empty" style="padding:28px 14px;line-height:1.7">Ingen ritning importerad för <b>'+o.omr+'-'+byg3(o)+'</b>.<br><small style="color:var(--muted)">Importera en ritning döpt '+o.omr+'-'+byg3(o)+' (bild eller PDF) under fliken Importera. Har huset flera ritningar: döp dem t.ex. "'+o.omr+'-'+byg3(o)+' Källare", "'+o.omr+'-'+byg3(o)+' Plan 1".</small></div></div></div></div><div class="savezone"><button class="btn primary" id="plDone" style="flex:1">Klar</button></div>';
     showSheet();$("sheet").querySelector("#plClose").onclick=closeRecord;$("sheet").querySelector("#plDone").onclick=closeRecord;return;
   }
   const lbl=x=>(x.di?String(x.di).slice(-4):(x.lgh||""));
-  const same=objects.filter(x=>x.omr===o.omr&&byg3(x)===byg3(o)&&x.mark&&x.key!==o.key);
+  let onThis=!!(o.mark&&markKey(o)===rk);
+  const elsewhere=o.mark&&!onThis?markKey(o):"";
+  const same=objects.filter(x=>x.mark&&markKey(x)===rk&&x.key!==o.key);
   const dot=(x,cur)=>'<div class="mk'+(cur?' cur':'')+(hasAptus(x)?' aptus':'')+'"'+(cur?' id="mkCur"':'')+' style="left:'+(x.mark.x*100)+'%;top:'+(x.mark.y*100)+'%">'+esc(lbl(x))+'</div>';
-  const marks=same.map(x=>dot(x,false)).join("")+(o.mark?dot(o,true):'');
+  const marks=same.map(x=>dot(x,false)).join("")+(onThis?dot(o,true):'');
   $("sheet").innerHTML=head+
     '<div id="plView" class="plview"><div id="plStage" class="plstage"><img id="plImg" src="'+img+'" draggable="false">'+marks+'</div>'+
-    '<div class="plzoom"><button id="plIn">+</button><button id="plOut">\u2212</button><button id="plFit">\u2922</button></div></div>'+
-    '<div class="hint" style="padding:8px 14px">Tryck för att placera \u00b7 dra gröna markören för att flytta \u00b7 nyp/knappar för att zooma.'+(same.length?' '+same.length+' andra dörrar visas som referens.':'')+'</div>'+
-    '<div class="savezone"><button class="btn ghost" id="plDel" style="flex:0 0 auto">Ta bort</button><button class="btn ghost" id="plNext" style="flex:1">Nästa</button><button class="btn primary" id="plDone" style="flex:1">Klar</button></div>';
+    '<div class="plzoom"><button id="plIn">+</button><button id="plOut">−</button><button id="plFit">⤢</button></div></div>'+
+    '<div class="hint" id="plHint" style="padding:8px 14px">'+(elsewhere?'<b style="color:#a14b0c">Dörren är placerad på '+htm(ritLabelOf(elsewhere)||"huvudritningen")+'. Trycker du här flyttas den till den här ritningen. </b>':'')+'Tryck för att placera · dra gröna markören för att flytta · nyp/knappar för att zooma.'+(same.length?' '+same.length+' andra dörrar visas som referens.':'')+'</div>'+
+    '<div class="savezone"><button class="btn ghost" id="plDel" style="flex:0 0 auto">Ta bort</button>'+(ks.length>1?'<button class="btn ghost" id="plSwitch" style="flex:0 0 auto">Byt ritning</button>':'')+'<button class="btn ghost" id="plNext" style="flex:1">Nästa</button><button class="btn primary" id="plDone" style="flex:1">Klar</button></div>';
   showSheet();const S=$("sheet");
+  if(ks.length>1)S.querySelector("#plSwitch").onclick=async()=>{const k2=await ritChoose(ks,"Byt ritning",o.mark?markKey(o):null);if(k2&&k2!==rk)openPlacera(key,k2);};
   const view=S.querySelector("#plView"),stage=S.querySelector("#plStage"),imgEl=S.querySelector("#plImg");
   let scale=1,tx=0,ty=0;
   function apply(){stage.style.transform="translate("+tx+"px,"+ty+"px) scale("+scale+")";stage.style.setProperty("--mks",1/scale);}
   apply();
   function fracFromClient(cx,cy){const r=imgEl.getBoundingClientRect();return {x:Math.max(0,Math.min(1,(cx-r.left)/r.width)),y:Math.max(0,Math.min(1,(cy-r.top)/r.height))};}
-  function setMark(fr){o.mark=rsha?{x:fr.x,y:fr.y,rit:rsha}:{x:fr.x,y:fr.y};o.ts=new Date().toISOString();persist();refreshAll();let cur=stage.querySelector("#mkCur");if(!cur){cur=document.createElement("div");cur.className="mk cur"+(hasAptus(o)?" aptus":"");cur.id="mkCur";stage.appendChild(cur);}cur.style.left=(fr.x*100)+"%";cur.style.top=(fr.y*100)+"%";cur.textContent=lbl(o);}
+  function setMark(fr){const mk={x:fr.x,y:fr.y};if(rsha)mk.rit=rsha;if(rv)mk.v=rv;o.mark=mk;if(!onThis){onThis=true;const h=S.querySelector("#plHint b");if(h)h.remove();}o.ts=new Date().toISOString();persist();refreshAll();let cur=stage.querySelector("#mkCur");if(!cur){cur=document.createElement("div");cur.className="mk cur"+(hasAptus(o)?" aptus":"");cur.id="mkCur";stage.appendChild(cur);}cur.style.left=(fr.x*100)+"%";cur.style.top=(fr.y*100)+"%";cur.textContent=lbl(o);}
   const pts=new Map();let mode=null,sx,sy,tx0,ty0,pd0,sc0,mid0;
   view.addEventListener("pointerdown",e=>{try{view.setPointerCapture(e.pointerId);}catch(_){}pts.set(e.pointerId,{x:e.clientX,y:e.clientY});
     if(pts.size===1){const onCur=e.target&&e.target.closest&&e.target.closest("#mkCur");mode=onCur?"drag":"maybe";sx=e.clientX;sy=e.clientY;tx0=tx;ty0=ty;}
@@ -928,7 +1031,7 @@ async function openPlacera(key){
   S.querySelector("#plFit").onclick=()=>{scale=1;tx=0;ty=0;apply();};
   S.querySelector("#plClose").onclick=closeRecord;
   S.querySelector("#plDone").onclick=closeRecord;
-  S.querySelector("#plDel").onclick=()=>{if(o.mark){delete o.mark;o.ts=new Date().toISOString();persist();refreshAll();const c=stage.querySelector("#mkCur");if(c)c.remove();toast("Markör borttagen");}else toast("Ingen markör att ta bort");};
+  S.querySelector("#plDel").onclick=()=>{if(o.mark&&!onThis){toast("Dörren är inte placerad på den här ritningen");return;}if(o.mark){delete o.mark;onThis=false;o.ts=new Date().toISOString();persist();refreshAll();const c=stage.querySelector("#mkCur");if(c)c.remove();toast("Markör borttagen");}else toast("Ingen markör att ta bort");};
   S.querySelector("#plNext").onclick=()=>{const gk=o.omr+"|"+(o.byg||"")+"|"+(o.ing||"");const nx=objects.find(x=>(x.omr+"|"+(x.byg||"")+"|"+(x.ing||""))===gk&&!isDone(x)&&x.key!==o.key)||objects.find(x=>x.omr===o.omr&&byg3(x)===byg3(o)&&x.key!==o.key);if(nx)openRecord(nx.key);else{closeRecord();toast("Inga fler objekt i huset");}};
 }
 
@@ -1141,7 +1244,7 @@ function exportPool(omrF){
   const areas=omrF?[omrF]:Object.keys(didPool||{});
   const used=new Set(objects.map(o=>o.di).filter(Boolean));
   const cols=["OmrådeKod","DörrId","Status","Källa"];const rows=[];
-  areas.sort().forEach(omr=>{const base=poolBase[omr]||0;(didPool[omr]||[]).slice().sort().forEach(id=>{const sq=parseInt(id.slice(6),10);const kalla=(base&&!isNaN(sq)&&sq>base)?"Tillägg":"Ursprunglig";rows.push([omr,id,used.has(id)?"Använd":(didReserved[id]?"Reserverad":"Ledig"),kalla]);});});
+  areas.sort().forEach(omr=>{const base=poolBase[omr]||0;(didPool[omr]||[]).slice().sort().forEach(id=>{const sq=parseInt(id.slice(6),10);const kalla=(base&&!isNaN(sq)&&sq>base)?"Tillägg":"Ursprunglig";rows.push([omr,id,used.has(id)?"Använd":(isBlocked(id)?"Spärrad (tidigare använd)":(didReserved[id]?"Reserverad":"Ledig")),kalla]);});});
   if(!rows.length){toast("Ingen pool för valt område");return;}
   dl("dorrid_pool_"+(omrF?omrF+"_":"")+stamp()+".csv","\uFEFF"+[cols].concat(rows).map(r=>r.map(cc).join(";")).join("\r\n"));
 }
@@ -1194,7 +1297,7 @@ function exportMaterial(omrF){
   if(!rows.length){toast("Inget att exportera");return;}
   dl("material_"+(omrF?omrF+"_":"")+stamp()+".csv","\uFEFF"+[cols].concat(rows).map(r=>r.map(cc).join(";")).join("\r\n"));
 }
-function backupBundle(){return JSON.stringify({v:3,exported:new Date().toISOString(),objects,didReserved,didPool,equip});}
+function backupBundle(){return JSON.stringify({v:3,exported:new Date().toISOString(),objects,didReserved,didPool,equip,didBlock});}
 async function shareBackup(){
   const data=backupBundle(),fname="certego_inventering_backup_"+stamp()+".json";
   try{if(navigator.canShare){const f=new File([data],fname,{type:"application/json"});if(navigator.canShare({files:[f]})){await navigator.share({files:[f],title:"Certego inventering backup"});return;}}}catch(e){}
@@ -1214,6 +1317,7 @@ function mergeData(text){
   Object.keys(resIn).forEach(id=>{didReserved[id]=true;});
   objects.forEach(o=>{if(o.di)didReserved[o.di]=true;});
   Object.keys(poolIn).forEach(k=>{didPool[k]=[...new Set((didPool[k]||[]).concat(poolIn[k]))];});
+  if(inc&&!Array.isArray(inc)&&inc.didBlock){didBlock=mergeBlocks(didBlock,inc.didBlock);saveBlock();}applyBlocks();
   savePool();saveReserved();saveEquip();persist();refreshAll();
   toast("Sammanslaget: "+added+" nya, "+updated+" uppdaterade");
 }
@@ -1226,6 +1330,7 @@ async function syncNow(){
     if(!res.ok)throw new Error("HTTP "+res.status);
     const merged=await res.json();
     objects=merged.objects||[];didPool=merged.didPool||{};didReserved=merged.didReserved||{};equip=merged.equip||[];
+    didBlock=mergeBlocks(didBlock,merged.didBlock||{});saveBlock();applyBlocks(); // äldre server utan didBlock: behåll lokala spärrar
     persist();savePool();saveReserved();saveEquip();
     lastSync=new Date().toISOString();store.set("uh_lastsync",lastSync);
     refreshAll();
@@ -1259,7 +1364,7 @@ async function fotoClear(){const omr=$("fotoOmr").value;if(!omr){toast("Välj om
   try{const r=await fetch(base+"/api/photos/clear",{method:"POST",headers:{"Content-Type":"application/json"},body:JSON.stringify({omr})}).then(r=>r.json());
     toast("Rensade "+(r.cleared||0)+" foton");loadFotoAreas();}catch(e){toast("Kunde inte rensa");}
 }
-function refreshAll(){omrOptions();renderBrowse();renderOverview();renderEquip();
+function refreshAll(){omrOptions();renderBrowse();renderOverview();renderEquip();renderDiBlocks();
   const pn=Object.keys(didPool).length,pc=Object.values(didPool).reduce((s,a)=>s+a.length,0);
   const ps=$("poolStatus");if(ps)ps.innerHTML=pn?('✓ Dörr-id-lista inläst: <b>'+pn+'</b> områden, <b>'+pc+'</b> id:n. Tilldelning drar nästa lediga ur listan och reserverar det.'):'Dörr-id-lista ej inläst — tilldelning sker som högsta använda + 1. Importera bladet "DörrID och Område" för exakt tilldelning ur den genererade listan.';
 }
@@ -1280,6 +1385,7 @@ function init(){
   $("impGo").onclick=()=>{if(!parsedWb){toast("Välj en fil först");return;}if(!Object.values(pickedSheets).some(Boolean)){toast("Markera minst ett blad");return;}importSheets();};
   $("expCsv").onclick=()=>exportProg("");$("expObj").onclick=()=>exportObj("");if($("expMat"))$("expMat").onclick=()=>exportMaterial("");
   if($("resetDiO"))$("resetDiO").onclick=()=>resetArea($("expOmr").value);
+  if($("dbApply")){$("dbApply").onclick=dbApply;["dbOmr","dbFrom","dbTo"].forEach(id=>$(id).addEventListener("input",dbPreview));}
   if($("expProgO")){$("expProgO").onclick=()=>exportProg($("expOmr").value);$("expObjO").onclick=()=>exportObj($("expOmr").value);$("expMatO").onclick=()=>exportMaterial($("expOmr").value);if($("expPoolO"))$("expPoolO").onclick=()=>exportPool($("expOmr").value);}
   $("eChips").innerHTML=EQUIP.map(x=>'<div class="addchip" data-b="'+x+'">'+x+'</div>').join("");
   $("eChips").querySelectorAll(".addchip").forEach(c=>c.onclick=()=>{$("eBen").value=c.dataset.b;$("eAnt").focus();});
