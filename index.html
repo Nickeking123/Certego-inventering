@@ -1121,14 +1121,27 @@ async function exportKundPdf(omr){
     hRows.forEach(r=>{y+=6.8;if(y>232){doc.addPage();header("Område "+omr+" – sammanställning (forts.)",areaName);y=38;tableHead(hc,M+2,y);y+=6.8;}
       doc.setDrawColor(LIN);doc.line(M+2,y+2.4,M+2+tw,y+2.4);let cx=M+2;hc.forEach((c,i)=>{font(8.8,i===0,i===8&&!/^(\d+) \/ \1$/.test(r[8])?ACC:"#16191D");doc.text(fit(r[i],c[1]-3),cx+1.8,y);cx+=c[1];});});
     // Anteckningar till höger på första sidan
+    // Anteckningar: likadana (t.ex. befintligt nattlås "309") slås ihop med antal; unika listas en och en.
     const notes=objs.filter(o=>(o.note||"").trim()).map(o=>[(o.di||kundRum(o)),kundRum(o),o.note.trim()]).concat(eqA.filter(e=>(e.note||"").trim()).map(e=>[e.mk||"",e.ben,e.note.trim()]));
+    const nKey=t=>t.toLowerCase().replace(/\s+/g," "),nCnt={};notes.forEach(n=>{const k=nKey(n[2]);(nCnt[k]=nCnt[k]||{t:n[2],n:0}).n++;});
+    const grouped=Object.values(nCnt).filter(g=>g.n>1).sort((a,b)=>b.n-a.n||a.t.localeCompare(b.t,'sv',{numeric:true}));
+    const single=notes.filter(n=>nCnt[nKey(n[2])].n===1);
     doc.setPage(1);const nx=M+2+tw+10,nw=W-M-2-nx;let ny=68;
     if(nw>60){font(12,true,STEEL);doc.text("Anteckningar från inventeringen",nx,ny);ny+=4;
       doc.setFillColor(SOFT);doc.roundedRect(nx,ny,nw,160,3,3,"F");const nBot=ny+160;ny+=8;
       if(!notes.length){font(9,false,MUT);doc.text("Inga anteckningar.",nx+5,ny);}
-      let shown=0;for(const n of notes){font(9,true,STEEL);const lines=(font(8.6),doc.splitTextToSize(n[2],nw-10));if(ny+lines.length*4+(notes.length>shown+1?10:2)>nBot-4){break;}
-        font(9,true,STEEL);doc.text(fit(n[0]+(n[1]&&n[1]!==n[0]?" · "+n[1]:""),nw-10),nx+5,ny);font(8.6);lines.forEach(l=>{ny+=4;doc.text(l,nx+5,ny);});ny+=6.5;shown++;}
-      if(shown<notes.length){font(8.6,false,MUT);doc.text("+ "+(notes.length-shown)+" till – se dörrförteckningen.",nx+5,Math.min(ny,nBot-4));}}
+      let hidden=0;
+      if(grouped.length){font(9,true,MUT);doc.text("Återkommande (antal dörrar)",nx+5,ny);ny+=5.5;
+        for(let i=0;i<grouped.length;i++){const g=grouped[i];if(ny>nBot-10){hidden+=grouped.slice(i).reduce((s,x)=>s+x.n,0);break;}
+          font(9,false,"#16191D");doc.text(fit(g.t,nw-32),nx+5,ny);font(9,true,STEEL);doc.text(g.n+" st",nx+nw-5,ny,{align:"right"});
+          doc.setDrawColor(LIN);doc.line(nx+5,ny+1.6,nx+nw-5,ny+1.6);ny+=5.4;}
+        ny+=5;}
+      if(single.length&&ny<nBot-14){if(grouped.length){font(9,true,MUT);doc.text("Övriga",nx+5,ny);ny+=5.5;}
+        let i=0;for(;i<single.length;i++){const n=single[i];font(8.6);const lines=doc.splitTextToSize(n[2],nw-10);if(ny+lines.length*4+(i<single.length-1?10:2)>nBot-4)break;
+          font(9,true,STEEL);doc.text(fit(n[0]+(n[1]&&n[1]!==n[0]?" · "+n[1]:""),nw-10),nx+5,ny);font(8.6);lines.forEach(l=>{ny+=4;doc.text(l,nx+5,ny);});ny+=6.5;}
+        hidden+=single.length-i;}
+      else hidden+=single.length;
+      if(hidden){font(8.6,false,MUT);doc.text("+ "+hidden+" till – se dörrförteckningen.",nx+5,Math.min(ny,nBot-4));}}
     legend(M+2,252);
 
     // ---- En sida per ritning ----
